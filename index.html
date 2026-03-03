@@ -2,30 +2,31 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Mini VALORANT Clone</title>
+    <title>VALORANT Style Map - Three.js</title>
     <style>
-        body { margin: 0; overflow: hidden; font-family: sans-serif; }
+        body { margin: 0; overflow: hidden; font-family: 'Segoe UI', sans-serif; }
         #crosshair {
             position: absolute; top: 50%; left: 50%;
-            width: 20px; height: 20px;
+            width: 12px; height: 12px;
             border: 2px solid #00ff00;
             transform: translate(-50%, -50%);
             pointer-events: none;
         }
         #ui {
-            position: absolute; bottom: 20px; left: 20px;
-            color: white; font-size: 24px; text-shadow: 2px 2px 4px #000;
+            position: absolute; bottom: 30px; left: 30px;
+            color: white; font-size: 28px; font-weight: bold;
+            text-shadow: 2px 2px 5px rgba(0,0,0,0.7);
         }
-        #msg {
-            position: absolute; top: 20%; width: 100%; text-align: center;
-            color: white; font-size: 20px;
+        #instructions {
+            position: absolute; top: 20px; width: 100%; text-align: center;
+            color: #ccc; font-size: 16px; background: rgba(0,0,0,0.3); padding: 10px 0;
         }
     </style>
 </head>
 <body>
     <div id="crosshair"></div>
-    <div id="ui">HP: 100 | Kills: <span id="kills">0</span></div>
-    <div id="msg">クリックして開始 (WASDで移動 / クリックで射撃)</div>
+    <div id="ui">KILLS: <span id="kills">0</span></div>
+    <div id="instructions">クリックで開始 | WASD: 移動 | <b>SPACE: 射撃</b></div>
 
     <script type="importmap">
         {
@@ -38,55 +39,78 @@
     <script type="module">
         import * as THREE from 'three';
 
-        // --- 設定 ---
-        let kills = 0;
-        const bots = [];
-        const clock = new THREE.Clock();
-        
-        // --- シーン・カメラ・レンダラー ---
+        // --- 基本設定 ---
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x87ceeb); // 青空
+        scene.background = new THREE.Color(0x222222);
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
 
-        // --- ライティング ---
-        const light = new THREE.DirectionalLight(0xffffff, 1);
-        light.position.set(5, 10, 7.5);
-        scene.add(light);
-        scene.add(new THREE.AmbientLight(0x404040));
+        const clock = new THREE.Clock();
+        const walls = []; // 衝突判定用の壁リスト
+        const bots = [];  // ターゲットリスト
+        let killCount = 0;
 
-        // --- 地面 (マップ) ---
+        // --- ライティング ---
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+        const sun = new THREE.DirectionalLight(0xffffff, 0.8);
+        sun.position.set(10, 20, 10);
+        scene.add(sun);
+
+        // --- フィールド・遮蔽物の作成 ---
+        function createBox(x, y, z, w, h, d, color, isBot = false) {
+            const geom = isBot ? new THREE.CapsuleGeometry(0.5, 1, 4, 8) : new THREE.BoxGeometry(w, h, d);
+            const mat = new THREE.MeshStandardMaterial({ color: color });
+            const mesh = new THREE.Mesh(geom, mat);
+            mesh.position.set(x, y + h/2, z);
+            scene.add(mesh);
+            if (!isBot) walls.push(mesh);
+            return mesh;
+        }
+
+        // 地面
         const floor = new THREE.Mesh(
-            new THREE.PlaneGeometry(100, 100),
-            new THREE.MeshStandardMaterial({ color: 0x555555 })
+            new THREE.PlaneGeometry(60, 60),
+            new THREE.MeshStandardMaterial({ color: 0x333333 })
         );
         floor.rotation.x = -Math.PI / 2;
         scene.add(floor);
 
-        // --- プレイヤーの制御 ---
-        camera.position.y = 1.6; // 目線の高さ
-        const move = { fwd: false, bwd: false, lft: false, rgt: false };
-        
-        document.addEventListener('keydown', (e) => {
-            if(e.code === 'KeyW') move.fwd = true;
-            if(e.code === 'KeyS') move.bwd = true;
-            if(e.code === 'KeyA') move.lft = true;
-            if(e.code === 'KeyD') move.rgt = true;
-        });
-        document.addEventListener('keyup', (e) => {
-            if(e.code === 'KeyW') move.fwd = false;
-            if(e.code === 'KeyS') move.bwd = false;
-            if(e.code === 'KeyA') move.lft = false;
-            if(e.code === 'KeyD') move.rgt = false;
-        });
+        // 外壁 (囲い)
+        createBox(0, 0, -30, 60, 5, 1, 0x444444); // 奥
+        createBox(0, 0, 30, 60, 5, 1, 0x444444);  // 手前
+        createBox(-30, 0, 0, 1, 5, 60, 0x444444); // 左
+        createBox(30, 0, 0, 1, 5, 60, 0x444444);  // 右
 
-        // マウスで視点移動 (Pointer Lock)
-        window.addEventListener('click', () => {
-            document.body.requestPointerLock();
-            document.getElementById('msg').style.display = 'none';
+        // 遮蔽物 (VALORANTっぽい箱や壁)
+        createBox(-10, 0, -10, 4, 4, 4, 0x1177ff); // 青いコンテナ
+        createBox(12, 0, 5, 3, 6, 3, 0x1177ff);    // 高い柱
+        createBox(-5, 0, 15, 6, 3, 2, 0x666666);   // 低い壁
+        createBox(15, 0, -15, 8, 4, 1, 0x666666);  // 横長の遮蔽
+        createBox(0, 0, 0, 4, 2, 4, 0xffaa00);     // 中央の低い箱
+
+        // --- Botの作成 ---
+        function spawnBot() {
+            const x = (Math.random() - 0.5) * 40;
+            const z = (Math.random() - 0.5) * 40;
+            // 壁の中にスポーンしないよう簡易チェック（中心付近に配置）
+            const bot = createBox(x, 0.5, z, 1, 2, 1, 0xff4444, true);
+            bots.push(bot);
+        }
+        for(let i=0; i<6; i++) spawnBot();
+
+        // --- 操作系 ---
+        camera.position.set(0, 1.6, 25);
+        const keys = {};
+        document.addEventListener('keydown', (e) => {
+            keys[e.code] = true;
+            if(e.code === 'Space') shoot(); // スペースで射撃
         });
+        document.addEventListener('keyup', (e) => keys[e.code] = false);
+
+        window.addEventListener('click', () => document.body.requestPointerLock());
 
         document.addEventListener('mousemove', (e) => {
             if (document.pointerLockElement === document.body) {
@@ -96,29 +120,38 @@
             }
         });
 
-        // --- Botの作成機能 ---
-        function spawnBot() {
-            const geometry = new THREE.CapsuleGeometry(0.4, 1, 4, 8);
-            const material = new THREE.MeshStandardMaterial({ color: 0xff0000 });
-            const bot = new THREE.Mesh(geometry, material);
+        // --- 衝突判定付きの移動 ---
+        function movePlayer(delta) {
+            const speed = 8 * delta;
+            const prevPos = camera.position.clone();
             
-            bot.position.set(
-                (Math.random() - 0.5) * 40,
-                1,
-                (Math.random() - 0.5) * 40
-            );
-            scene.add(bot);
-            bots.push(bot);
-        }
+            const direction = new THREE.Vector3();
+            if (keys['KeyW']) direction.z -= 1;
+            if (keys['KeyS']) direction.z += 1;
+            if (keys['KeyA']) direction.x -= 1;
+            if (keys['KeyD']) direction.x += 1;
+            
+            direction.normalize().applyQuaternion(camera.quaternion);
+            direction.y = 0; // 飛行防止
+            camera.position.addScaledVector(direction, speed);
 
-        for(let i=0; i<5; i++) spawnBot();
+            // 簡易的な壁判定 (各壁との距離をチェック)
+            for (const wall of walls) {
+                const wallBox = new THREE.Box3().setFromObject(wall);
+                const playerBox = new THREE.Box3().setFromCenterAndSize(
+                    camera.position, new THREE.Vector3(0.8, 1.8, 0.8)
+                );
+                if (wallBox.intersectsBox(playerBox)) {
+                    camera.position.copy(prevPos); // ぶつかったら戻す
+                }
+            }
+        }
 
         // --- 射撃システム ---
         const raycaster = new THREE.Raycaster();
-        window.addEventListener('mousedown', () => {
+        function shoot() {
             if (document.pointerLockElement !== document.body) return;
 
-            // 画面中央からレイを飛ばす
             raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
             const intersects = raycaster.intersectObjects(bots);
 
@@ -126,29 +159,21 @@
                 const target = intersects[0].object;
                 scene.remove(target);
                 bots.splice(bots.indexOf(target), 1);
-                kills++;
-                document.getElementById('kills').innerText = kills;
-                spawnBot(); // 倒したら新しいBotを出す
+                killCount++;
+                document.getElementById('kills').innerText = killCount;
+                setTimeout(spawnBot, 1000); // 1秒後にリスポーン
             }
-        });
+            // 射撃エフェクト（反動など）をここに入れるとさらに良くなります
+        }
 
-        // --- ゲームループ ---
+        // --- メインループ ---
         function animate() {
             requestAnimationFrame(animate);
-            const delta = clock.getDelta();
-            const speed = 5 * delta;
-
-            if (move.fwd) camera.translateZ(-speed);
-            if (move.bwd) camera.translateZ(speed);
-            if (move.lft) camera.translateX(-speed);
-            if (move.rgt) camera.translateX(speed);
-            camera.position.y = 1.6; // 高さを固定
-
+            movePlayer(clock.getDelta());
             renderer.render(scene, camera);
         }
         animate();
 
-        // 画面リサイズ対応
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
