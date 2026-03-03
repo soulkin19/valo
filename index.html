@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Mini VALORANT Prototype</title>
+    <style>
+        body { margin: 0; background: #0f1923; display: flex; justify-content: center; align-items: center; height: 100vh; color: white; font-family: sans-serif; overflow: hidden; }
+        canvas { border: 2px solid #ff4655; background: #1f2326; cursor: crosshair; }
+        .ui { position: absolute; top: 20px; left: 20px; pointer-events: none; }
+    </style>
+</head>
+<body>
+    <div class="ui">
+        <h1>Mini VALORANT</h1>
+        <p>WASDで移動 | クリックで射撃 (静止すると精度UP)</p>
+    </div>
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = 800;
+        canvas.height = 600;
+
+        const player = {
+            x: 100, y: 100, size: 20, color: '#00eeff', speed: 3,
+            dx: 0, dy: 0, isMoving: false
+        };
+
+        const bullets = [];
+        const walls = [
+            {x: 200, y: 150, w: 400, h: 20}, // 中央の壁
+            {x: 300, y: 300, w: 20, h: 200}, // 縦の遮蔽物
+        ];
+
+        const keys = {};
+        window.onkeydown = (e) => keys[e.key.toLowerCase()] = true;
+        window.onkeyup = (e) => keys[e.key.toLowerCase()] = false;
+
+        // 射撃処理
+        canvas.onclick = (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+            
+            // 角度計算: $\theta = \operatorname{atan2}(dy, dx)$
+            const angle = Math.atan2(mouseY - player.y, mouseX - player.x);
+            
+            // 移動中は精度が落ちる（VALORANT風）
+            const spread = player.isMoving ? (Math.random() - 0.5) * 0.2 : 0;
+            
+            bullets.push({
+                x: player.x, y: player.y,
+                vx: Math.cos(angle + spread) * 10,
+                vy: Math.sin(angle + spread) * 10
+            });
+        };
+
+        function update() {
+            // 移動処理
+            player.dx = 0; player.dy = 0;
+            if (keys['w']) player.dy = -player.speed;
+            if (keys['s']) player.dy = player.speed;
+            if (keys['a']) player.dx = -player.speed;
+            if (keys['d']) player.dx = player.speed;
+
+            player.isMoving = player.dx !== 0 || player.dy !== 0;
+
+            // 壁との衝突判定（簡易）
+            let nextX = player.x + player.dx;
+            let nextY = player.y + player.dy;
+
+            walls.forEach(w => {
+                if (nextX > w.x && nextX < w.x + w.w && player.y > w.y && player.y < w.y + w.h) player.dx = 0;
+                if (player.x > w.x && player.x < w.x + w.w && nextY > w.y && nextY < w.y + w.h) player.dy = 0;
+            });
+
+            player.x += player.dx;
+            player.y += player.dy;
+
+            // 弾の移動
+            bullets.forEach((b, i) => {
+                b.x += b.vx; b.y += b.vy;
+                if (b.x < 0 || b.x > canvas.width || b.y < 0 || b.y > canvas.height) bullets.splice(i, 1);
+            });
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 壁の描画
+            ctx.fillStyle = '#444';
+            walls.forEach(w => ctx.fillRect(w.x, w.y, w.w, w.h));
+
+            // 弾の描画
+            ctx.fillStyle = '#ffff00';
+            bullets.forEach(b => ctx.fillRect(b.x, b.y, 4, 4));
+
+            // プレイヤーの描画
+            ctx.fillStyle = player.color;
+            ctx.beginPath();
+            ctx.arc(player.x, player.y, player.size/2, 0, Math.PI*2);
+            ctx.fill();
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+        gameLoop();
+    </script>
+</body>
+</html>
