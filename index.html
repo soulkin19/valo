@@ -3,227 +3,222 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>VALORANT 2D: ULTIMATE</title>
+    <title>VALORANT 2D - TACTICAL</title>
     <style>
-        :root { --v-red: #ff4655; --v-blue: #00eeff; --v-dark: #0f1923; }
-        body { margin: 0; background: var(--v-dark); overflow: hidden; font-family: 'Oswald', sans-serif; touch-action: none; }
-        canvas { display: block; background: #1a2228; margin: auto; }
+        body { margin: 0; background: #0f1923; overflow: hidden; font-family: 'Courier New', Courier, monospace; touch-action: none; -webkit-user-select: none; }
+        #hud { position: absolute; width: 100%; height: 100%; pointer-events: none; }
         
-        #ui-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
-        .hud-bottom { position: absolute; bottom: 20px; width: 100%; display: flex; justify-content: center; gap: 40px; }
-        .stat-card { background: rgba(15, 25, 35, 0.9); border-bottom: 4px solid var(--v-red); padding: 10px 30px; color: white; text-align: center; }
-        .stat-val { font-size: 32px; font-weight: bold; }
+        /* ミニマップ */
+        #minimap { position: absolute; top: 20px; right: 20px; width: 150px; height: 150px; background: rgba(15, 25, 35, 0.8); border: 2px solid #ff4655; border-radius: 4px; }
         
-        #kill-feed { position: absolute; top: 20px; right: 20px; text-align: right; color: var(--v-red); font-size: 20px; }
-        #flash-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: white; opacity: 0; }
-        
-        #fs-btn { position: absolute; top: 10px; left: 10px; pointer-events: auto; background: var(--v-red); color: white; border: none; padding: 10px; cursor: pointer; border-radius: 4px; }
+        /* ステータス */
+        .status-container { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); display: flex; gap: 50px; align-items: flex-end; }
+        .stat-box { background: rgba(15, 25, 35, 0.9); padding: 10px 40px; border-bottom: 5px solid #ff4655; color: white; }
+        .label { font-size: 12px; color: #8b978f; }
+        .value { font-size: 40px; font-weight: bold; }
+
+        #flash { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: white; opacity: 0; transition: opacity 0.1s; }
+        #crosshair { position: absolute; pointer-events: none; color: #00ff00; font-size: 20px; transform: translate(-50%, -50%); }
     </style>
 </head>
 <body>
-    <button id="fs-btn">FULLSCREEN / START</button>
-    <div id="flash-overlay"></div>
-    <div id="ui-overlay">
-        <div id="kill-feed"></div>
-        <div class="hud-bottom">
-            <div class="stat-card"><div>HEALTH</div><div id="hp-val" class="stat-val">100</div></div>
-            <div class="stat-card"><div>FLASH [Q]</div><div id="q-val" class="stat-val">2</div></div>
-            <div class="stat-card"><div>SMOKE [E]</div><div id="e-val" class="stat-val">2</div></div>
+    <div id="flash"></div>
+    <div id="crosshair">+</div>
+    <canvas id="gameCanvas"></canvas>
+    
+    <div id="hud">
+        <div id="minimap"></div>
+        <div class="status-container">
+            <div class="stat-box">
+                <div class="label">HEALTH</div>
+                <div id="hp-val" class="value">100</div>
+            </div>
+            <div class="stat-box">
+                <div class="label">VANDAL</div>
+                <div id="ammo-val" class="value">25</div>
+            </div>
         </div>
     </div>
-    <canvas id="game"></canvas>
 
 <script>
-/** @type {HTMLCanvasElement} */
-const canvas = document.getElementById('game');
+const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
-const flashOverlay = document.getElementById('flash-overlay');
+const hpEl = document.getElementById('hp-val');
+const ammoEl = document.getElementById('ammo-val');
+const crosshair = document.getElementById('crosshair');
 
-// iPad/PC画面サイズ調整
-function resize() {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-}
-window.onresize = resize;
-resize();
+function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+window.onresize = resize; resize();
 
-// --- ゲーム定数 ---
-let player = { x: 100, y: 300, hp: 100, r: 15, smokes: 2, flashes: 2, recoil: 0, isWalking: false };
+// --- ゲームデータ ---
+let player = { x: 200, y: 300, r: 15, hp: 100, ammo: 25, angle: 0, recoil: 0, isMoving: false };
+let targetAngle = 0;
 let bots = [
-    {id: 1, x: 1200, y: 300, hp: 100, r: 15, blinded: 0, state: 'guard'},
-    {id: 2, x: 1500, y: 800, hp: 100, r: 15, blinded: 0, state: 'guard'}
+    {x: 1400, y: 300, hp: 100, reaction: 0, state: 'camp'},
+    {x: 1000, y: 800, hp: 100, reaction: 0, state: 'camp'}
 ];
 let walls = [
-    {x: 400, y: 0, w: 50, h: 400}, {x: 400, y: 600, w: 50, h: 500},
-    {x: 800, y: 300, w: 400, h: 50}, {x: 700, y: 700, w: 50, h: 300}
+    {x: 600, y: 0, w: 60, h: 400}, {x: 600, y: 600, w: 60, h: 600},
+    {x: 900, y: 300, w: 300, h: 60}, {x: 400, y: 700, w: 60, h: 400}
 ];
-let bullets = [], smokes = [], entities = [], keys = {}, mouse = {x:0, y:0};
+let bullets = [], smokes = [], keys = {}, pointer = {x: 0, y: 0};
 
-// --- 入力制御 ---
-window.onkeydown = (e) => keys[e.key.toLowerCase()] = true;
-window.onkeyup = (e) => keys[e.key.toLowerCase()] = false;
-canvas.onmousemove = (e) => { mouse.x = e.clientX; mouse.y = e.clientY; };
-canvas.ontouchmove = (e) => { mouse.x = e.touches[0].clientX; mouse.y = e.touches[0].clientY; e.preventDefault(); };
+// --- iPad/PC 共通入力制御 ---
+window.addEventListener('pointermove', (e) => {
+    pointer.x = e.clientX; pointer.y = e.clientY;
+    crosshair.style.left = e.clientX + 'px';
+    crosshair.style.top = e.clientY + 'px';
+});
 
-document.getElementById('fs-btn').onclick = () => {
-    if (!document.fullscreenElement) document.documentElement.requestFullscreen();
-    document.getElementById('fs-btn').style.display = 'none';
-};
-
-// 射撃とスキル
-function fire() {
-    if (player.hp <= 0) return;
-    const angle = Math.atan2(mouse.y - player.y, mouse.x - player.x);
-    // リコイル: 撃つほど上にずれる
-    const spread = (player.recoil * 0.2) + (keys['w']||keys['a']||keys['s']||keys['d'] ? 0.1 : 0.01);
-    const finalAngle = angle - (player.recoil * 0.05) + (Math.random()-0.5) * spread;
-    
-    bullets.push({x: player.x, y: player.y, vx: Math.cos(finalAngle)*25, vy: Math.sin(finalAngle)*25, owner: 'player'});
-    player.recoil = Math.min(player.recoil + 1, 10);
-}
-
-canvas.onmousedown = (e) => { if(e.button === 0) fire(); };
-canvas.ontouchstart = (e) => { fire(); e.preventDefault(); };
-
-window.addEventListener('keydown', (e) => {
-    if (e.key === 'q' && player.flashes > 0) { // フラッシュ
-        entities.push({x: player.x, y: player.y, vx: Math.cos(Math.atan2(mouse.y-player.y, mouse.x-player.x))*12, vy: Math.sin(Math.atan2(mouse.y-player.y, mouse.x-player.x))*12, type: 'flash', timer: 40});
-        player.flashes--;
-    }
-    if (e.key === 'e' && player.smokes > 0) { // スモーク
-        smokes.push({x: mouse.x, y: mouse.y, r: 0, maxR: 90, life: 600});
-        player.smokes--;
+// 射撃（iPadのタップ、PCのクリック両対応）
+window.addEventListener('pointerdown', (e) => {
+    if (player.ammo > 0 && player.hp > 0) {
+        shoot();
+        player.ammo--;
+        ammoEl.innerText = player.ammo;
     }
 });
 
-// --- 視線・衝突判定 ---
-function isWall(x, y) {
-    return walls.some(w => x > w.x && x < w.x+w.w && y > w.y && y < w.y+w.h);
-}
+window.onkeydown = (e) => keys[e.key.toLowerCase()] = true;
+window.onkeyup = (e) => keys[e.key.toLowerCase()] = false;
 
-function canSee(a, b) {
-    const dist = Math.hypot(b.x-a.x, b.y-a.y);
-    const ang = Math.atan2(b.y-a.y, b.x-a.x);
-    for(let d=0; d<dist; d+=15) {
-        if (isWall(a.x+Math.cos(ang)*d, a.y+Math.sin(ang)*d)) return false;
-    }
-    return true;
-}
+function shoot() {
+    const angle = Math.atan2(pointer.y - player.y, pointer.x - player.x);
+    // 反動計算：撃つほど上にズレる
+    const recoilOffset = (player.recoil * 0.04);
+    const spread = (player.isMoving ? 0.15 : 0.01) + (player.recoil * 0.02);
+    const finalAngle = angle - recoilOffset + (Math.random() - 0.5) * spread;
 
-// --- メインアップデート ---
-function update() {
-    // プレイヤー移動
-    let spd = keys['shift'] ? 1.5 : 3.5;
-    let dx=0, dy=0;
-    if(keys['w']) dy -= spd; if(keys['s']) dy += spd;
-    if(keys['a']) dx -= spd; if(keys['d']) dx += spd;
-    if(!isWall(player.x+dx, player.y)) player.x += dx;
-    if(!isWall(player.x, player.y+dy)) player.y += dy;
-    if(dx===0 && dy===0) player.recoil = Math.max(0, player.recoil - 0.5);
-
-    // エンティティ（フラッシュ）
-    entities.forEach((ent, i) => {
-        ent.x += ent.vx; ent.y += ent.vy; ent.timer--;
-        if (ent.timer <= 0) {
-            // 炸裂
-            const dist = Math.hypot(player.x - ent.x, player.y - ent.y);
-            if (dist < 400 && canSee(player, ent)) {
-                flashOverlay.style.opacity = 1; // プレイヤー目潰し
-            }
-            bots.forEach(b => {
-                if(Math.hypot(b.x-ent.x, b.y-ent.y) < 500 && canSee(b, ent)) b.blinded = 180;
-            });
-            entities.splice(i, 1);
-        }
+    bullets.push({
+        x: player.x, y: player.y,
+        vx: Math.cos(finalAngle) * 30,
+        vy: Math.sin(finalAngle) * 30,
+        owner: 'player'
     });
+    player.recoil = Math.min(player.recoil + 1.5, 10);
+}
 
-    // 目潰し回復
-    const curOpacity = parseFloat(flashOverlay.style.opacity) || 0;
-    if (curOpacity > 0) flashOverlay.style.opacity = curOpacity - 0.01;
+// --- ロジック ---
+function update() {
+    if (player.hp <= 0) return;
+
+    // エイム方向の更新
+    player.angle = Math.atan2(pointer.y - player.y, pointer.x - player.x);
+
+    // 移動
+    let dx = 0, dy = 0;
+    const speed = keys['shift'] ? 2 : 4;
+    if (keys['w']) dy -= speed; if (keys['s']) dy += speed;
+    if (keys['a']) dx -= speed; if (keys['d']) dx += speed;
+
+    player.isMoving = dx !== 0 || dy !== 0;
+    if (!player.isMoving) player.recoil = Math.max(0, player.recoil - 0.3);
+
+    // 衝突判定
+    const isWall = (x, y) => walls.some(w => x > w.x && x < w.x+w.w && y > w.y && y < w.y+w.h);
+    if (!isWall(player.x + dx, player.y)) player.x += dx;
+    if (!isWall(player.x, player.y + dy)) player.y += dy;
 
     // BOT AI
     bots.forEach(bot => {
         if (bot.hp <= 0) return;
-        if (bot.blinded > 0) { bot.blinded--; return; }
+        const dist = Math.hypot(player.x - bot.x, player.y - bot.y);
+        const canSee = !walls.some(w => lineRectIntersect(bot.x, bot.y, player.x, player.y, w));
 
-        if (canSee(bot, player) && player.hp > 0) {
-            if (Math.random() < 0.05) { // 射撃
+        if (canSee && dist < 600) {
+            bot.reaction++;
+            if (bot.reaction > 20) { // 反応速度
                 const ang = Math.atan2(player.y - bot.y, player.x - bot.x);
-                bullets.push({x: bot.x, y: bot.y, vx: Math.cos(ang)*15, vy: Math.sin(ang)*15, owner: 'bot'});
+                bullets.push({ x: bot.x, y: bot.y, vx: Math.cos(ang)*12, vy: Math.sin(ang)*12, owner: 'bot' });
+                bot.reaction = 0;
             }
+        } else {
+            bot.reaction = 0;
         }
     });
 
-    // 弾丸処理
+    // 弾丸の処理
     bullets.forEach((b, i) => {
         b.x += b.vx; b.y += b.vy;
         if (isWall(b.x, b.y)) bullets.splice(i, 1);
-        
         if (b.owner === 'player') {
             bots.forEach(bot => {
-                const d = Math.hypot(b.x-bot.x, b.y-bot.y);
-                if (bot.hp > 0 && d < bot.r) {
-                    const isHead = d < 6; // 中心に近いほどヘッドショット
-                    bot.hp -= isHead ? 100 : 35;
-                    if (bot.hp <= 0) document.getElementById('kill-feed').innerText = isHead ? "HEADSHOT KILL" : "KILLED BOT";
-                    bullets.splice(i, 1);
+                if (bot.hp > 0 && Math.hypot(b.x - bot.x, b.y - bot.y) < 20) {
+                    bot.hp -= 40; bullets.splice(i, 1);
                 }
             });
         } else {
-            if (Math.hypot(b.x-player.x, b.y-player.y) < player.r) {
-                player.hp -= 20;
-                bullets.splice(i, 1);
+            if (Math.hypot(b.x - player.x, b.y - player.y) < 15) {
+                player.hp -= 25; bullets.splice(i, 1);
+                hpEl.innerText = Math.max(0, player.hp);
             }
         }
     });
+}
 
-    // UI
-    document.getElementById('hp-val').innerText = Math.max(0, player.hp);
-    document.getElementById('q-val').innerText = player.flashes;
-    document.getElementById('e-val').innerText = player.smokes;
+// 線と矩形の衝突判定（視線用）
+function lineRectIntersect(x1, y1, x2, y2, r) {
+    const left = lineLine(x1, y1, x2, y2, r.x, r.y, r.x, r.y + r.h);
+    const right = lineLine(x1, y1, x2, y2, r.x + r.w, r.y, r.x + r.w, r.y + r.h);
+    const top = lineLine(x1, y1, x2, y2, r.x, r.y, r.x + r.w, r.y);
+    const bottom = lineLine(x1, y1, x2, y2, r.x, r.y + r.h, r.x + r.w, r.y + r.h);
+    return left || right || top || bottom;
+}
+function lineLine(x1, y1, x2, y2, x3, y3, x4, y4) {
+    let uA = ((x4-x3)*(y1-y3) - (y4-y3)*(x1-x3)) / ((y4-y3)*(x2-x1) - (x4-x3)*(y2-y1));
+    let uB = ((x2-x1)*(y1-y3) - (y2-y1)*(x1-x3)) / ((y4-y3)*(x2-x1) - (x4-x3)*(y2-y1));
+    return (uA >= 0 && uA <= 1 && uB >= 0 && uB <= 1);
 }
 
 // --- 描画 ---
 function draw() {
-    ctx.fillStyle = '#101823';
+    ctx.fillStyle = '#0f1923';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // グリッド背景
+    ctx.strokeStyle = '#1a252e';
+    for(let i=0; i<canvas.width; i+=50) { ctx.beginPath(); ctx.moveTo(i,0); ctx.lineTo(i,canvas.height); ctx.stroke(); }
+    for(let i=0; i<canvas.height; i+=50) { ctx.beginPath(); ctx.moveTo(0,i); ctx.lineTo(canvas.width,i); ctx.stroke(); }
 
     // 壁
     ctx.fillStyle = '#2d3741';
-    walls.forEach(w => ctx.fillRect(w.x, w.y, w.w, w.h));
-
-    // スモーク
-    smokes.forEach(s => {
-        if(s.r < s.maxR) s.r += 3;
-        ctx.fillStyle = 'rgba(120, 130, 150, 0.8)';
-        ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, Math.PI*2); ctx.fill();
-    });
-
-    // フラッシュ弾
-    entities.forEach(ent => {
-        ctx.fillStyle = 'white';
-        ctx.beginPath(); ctx.arc(ent.x, ent.y, 8, 0, Math.PI*2); ctx.fill();
+    walls.forEach(w => {
+        ctx.fillRect(w.x, w.y, w.w, w.h);
+        ctx.strokeStyle = '#ff4655'; ctx.strokeRect(w.x, w.y, w.w, w.h);
     });
 
     // プレイヤー
     if (player.hp > 0) {
-        ctx.fillStyle = player.isWalking ? '#888' : '#00eeff';
-        ctx.beginPath(); ctx.arc(player.x, player.y, player.r, 0, Math.PI*2); ctx.fill();
-        // 照準線
-        ctx.strokeStyle = 'rgba(255,255,255,0.3)';
-        ctx.beginPath(); ctx.moveTo(player.x, player.y); ctx.lineTo(mouse.x, mouse.y); ctx.stroke();
+        ctx.save();
+        ctx.translate(player.x, player.y);
+        ctx.rotate(player.angle);
+        ctx.fillStyle = '#00eeff';
+        ctx.beginPath(); ctx.arc(0, 0, player.r, 0, Math.PI*2); ctx.fill();
+        // 向き
+        ctx.fillStyle = 'white'; ctx.fillRect(10, -2, 15, 4);
+        ctx.restore();
     }
 
     // BOT
     bots.forEach(bot => {
         if (bot.hp <= 0) return;
-        ctx.fillStyle = bot.blinded > 0 ? 'white' : '#ff4655';
-        ctx.beginPath(); ctx.arc(bot.x, bot.y, bot.r, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#ff4655';
+        ctx.beginPath(); ctx.arc(bot.x, bot.y, 20, 0, Math.PI*2); ctx.fill();
+        // HPバー
+        ctx.fillStyle = '#555'; ctx.fillRect(bot.x-20, bot.y-35, 40, 5);
+        ctx.fillStyle = '#ff4655'; ctx.fillRect(bot.x-20, bot.y-35, 40*(bot.hp/100), 5);
     });
 
     // 弾丸
-    ctx.fillStyle = '#ffee00';
+    ctx.fillStyle = '#fff200';
     bullets.forEach(b => ctx.fillRect(b.x-2, b.y-2, 4, 4));
+
+    // フォグ・オブ・ウォー（視界の外を暗く）
+    const grad = ctx.createRadialGradient(player.x, player.y, 100, player.x, player.y, 600);
+    grad.addColorStop(0, 'rgba(0,0,0,0)');
+    grad.addColorStop(1, 'rgba(15,25,35,0.8)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
 }
 
 function loop() { update(); draw(); requestAnimationFrame(loop); }
