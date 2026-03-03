@@ -2,286 +2,228 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>VALORANT 2D: TACTICAL PRO</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>VALORANT 2D: ULTIMATE</title>
     <style>
-        body { margin: 0; background: #050a0e; overflow: hidden; font-family: 'Consolas', monospace; color: white; display: flex; justify-content: center; align-items: center; height: 100vh; }
-        canvas { background: #101823; box-shadow: 0 0 50px rgba(0,0,0,0.8); border: 1px solid #ff4655; }
-        #hud { position: absolute; width: 900px; height: 600px; pointer-events: none; border: 1px solid rgba(255,70,85,0.3); }
-        .stat-box { position: absolute; bottom: 20px; background: rgba(15, 25, 35, 0.8); padding: 10px 20px; border-left: 4px solid #ff4655; }
-        #hp-ui { left: 20px; font-size: 28px; }
-        #ability-ui { right: 20px; font-size: 18px; text-align: right; }
-        #kill-feed { position: absolute; top: 20px; right: 20px; color: #ff4655; font-weight: bold; }
-        #msg { position: absolute; top: 20%; width: 100%; text-align: center; font-size: 40px; color: #ff4655; display: none; text-transform: uppercase; letter-spacing: 5px; }
+        :root { --v-red: #ff4655; --v-blue: #00eeff; --v-dark: #0f1923; }
+        body { margin: 0; background: var(--v-dark); overflow: hidden; font-family: 'Oswald', sans-serif; touch-action: none; }
+        canvas { display: block; background: #1a2228; margin: auto; }
+        
+        #ui-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+        .hud-bottom { position: absolute; bottom: 20px; width: 100%; display: flex; justify-content: center; gap: 40px; }
+        .stat-card { background: rgba(15, 25, 35, 0.9); border-bottom: 4px solid var(--v-red); padding: 10px 30px; color: white; text-align: center; }
+        .stat-val { font-size: 32px; font-weight: bold; }
+        
+        #kill-feed { position: absolute; top: 20px; right: 20px; text-align: right; color: var(--v-red); font-size: 20px; }
+        #flash-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: white; opacity: 0; }
+        
+        #fs-btn { position: absolute; top: 10px; left: 10px; pointer-events: auto; background: var(--v-red); color: white; border: none; padding: 10px; cursor: pointer; border-radius: 4px; }
     </style>
 </head>
 <body>
-    <div id="hud">
-        <div id="hp-ui" class="stat-box">HP: 100</div>
-        <div id="ability-ui" class="stat-box">SMOKE [E]: READY<br>SHIFT: WALK</div>
+    <button id="fs-btn">FULLSCREEN / START</button>
+    <div id="flash-overlay"></div>
+    <div id="ui-overlay">
         <div id="kill-feed"></div>
-        <div id="msg">ACE</div>
+        <div class="hud-bottom">
+            <div class="stat-card"><div>HEALTH</div><div id="hp-val" class="stat-val">100</div></div>
+            <div class="stat-card"><div>FLASH [Q]</div><div id="q-val" class="stat-val">2</div></div>
+            <div class="stat-card"><div>SMOKE [E]</div><div id="e-val" class="stat-val">2</div></div>
+        </div>
     </div>
-    <canvas id="gameCanvas"></canvas>
+    <canvas id="game"></canvas>
 
 <script>
-const canvas = document.getElementById('gameCanvas');
+/** @type {HTMLCanvasElement} */
+const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
-canvas.width = 900; canvas.height = 600;
+const flashOverlay = document.getElementById('flash-overlay');
 
-// --- ゲーム設定 ---
-const GRID_SIZE = 30;
-let player = { x: 80, y: 300, hp: 100, angle: 0, speed: 3, isWalking: false, noise: 0, smokes: 2 };
+// iPad/PC画面サイズ調整
+function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
+window.onresize = resize;
+resize();
+
+// --- ゲーム定数 ---
+let player = { x: 100, y: 300, hp: 100, r: 15, smokes: 2, flashes: 2, recoil: 0, isWalking: false };
 let bots = [
-    { x: 800, y: 150, hp: 100, state: 'idle', angle: Math.PI, lastShoot: 0, reaction: 0 },
-    { x: 820, y: 450, hp: 100, state: 'idle', angle: Math.PI, lastShoot: 0, reaction: 0 }
+    {id: 1, x: 1200, y: 300, hp: 100, r: 15, blinded: 0, state: 'guard'},
+    {id: 2, x: 1500, y: 800, hp: 100, r: 15, blinded: 0, state: 'guard'}
 ];
-let bullets = [];
-let smokes = [];
-let particles = [];
 let walls = [
-    {x: 300, y: 0, w: 40, h: 200}, {x: 300, y: 400, w: 40, h: 200},
-    {x: 500, y: 200, w: 200, h: 40}, {x: 500, y: 360, w: 200, h: 40},
-    {x: 150, y: 250, w: 40, h: 100}
+    {x: 400, y: 0, w: 50, h: 400}, {x: 400, y: 600, w: 50, h: 500},
+    {x: 800, y: 300, w: 400, h: 50}, {x: 700, y: 700, w: 50, h: 300}
 ];
+let bullets = [], smokes = [], entities = [], keys = {}, mouse = {x:0, y:0};
 
-let keys = {};
-let mouse = { x: 0, y: 0 };
-let shake = 0;
-
+// --- 入力制御 ---
 window.onkeydown = (e) => keys[e.key.toLowerCase()] = true;
 window.onkeyup = (e) => keys[e.key.toLowerCase()] = false;
-canvas.onmousemove = (e) => {
-    const rect = canvas.getBoundingClientRect();
-    mouse.x = e.clientX - rect.left;
-    mouse.y = e.clientY - rect.top;
+canvas.onmousemove = (e) => { mouse.x = e.clientX; mouse.y = e.clientY; };
+canvas.ontouchmove = (e) => { mouse.x = e.touches[0].clientX; mouse.y = e.touches[0].clientY; e.preventDefault(); };
+
+document.getElementById('fs-btn').onclick = () => {
+    if (!document.fullscreenElement) document.documentElement.requestFullscreen();
+    document.getElementById('fs-btn').style.display = 'none';
 };
 
-// --- ヘルパー関数 ---
-function getDist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
-
-function canSee(from, to, ignoreSmokes = false) {
-    const dist = getDist(from, to);
-    const angle = Math.atan2(to.y - from.y, to.x - from.x);
-    for (let d = 0; d < dist; d += 10) {
-        const px = from.x + Math.cos(angle) * d;
-        const py = from.y + Math.sin(angle) * d;
-        for (let w of walls) {
-            if (px > w.x && px < w.x + w.w && py > w.y && py < w.y + w.h) return false;
-        }
-        if (!ignoreSmokes) {
-            for (let s of smokes) {
-                if (getDist({x:px, y:py}, s) < s.r) return false;
-            }
-        }
-    }
-    return true;
+// 射撃とスキル
+function fire() {
+    if (player.hp <= 0) return;
+    const angle = Math.atan2(mouse.y - player.y, mouse.x - player.x);
+    // リコイル: 撃つほど上にずれる
+    const spread = (player.recoil * 0.2) + (keys['w']||keys['a']||keys['s']||keys['d'] ? 0.1 : 0.01);
+    const finalAngle = angle - (player.recoil * 0.05) + (Math.random()-0.5) * spread;
+    
+    bullets.push({x: player.x, y: player.y, vx: Math.cos(finalAngle)*25, vy: Math.sin(finalAngle)*25, owner: 'player'});
+    player.recoil = Math.min(player.recoil + 1, 10);
 }
 
-// --- アクション ---
-canvas.onmousedown = () => {
-    if (player.hp <= 0) return;
-    const spread = (player.noise > 10 ? 0.15 : 0.02);
-    fireBullet(player, mouse.x, mouse.y, spread, '#00eeff');
-    shake = 5;
-};
+canvas.onmousedown = (e) => { if(e.button === 0) fire(); };
+canvas.ontouchstart = (e) => { fire(); e.preventDefault(); };
 
 window.addEventListener('keydown', (e) => {
-    if (e.key === 'e' && player.smokes > 1) { // 簡易化のため2個
-        smokes.push({ x: mouse.x, y: mouse.y, r: 0, maxR: 80, life: 600 });
+    if (e.key === 'q' && player.flashes > 0) { // フラッシュ
+        entities.push({x: player.x, y: player.y, vx: Math.cos(Math.atan2(mouse.y-player.y, mouse.x-player.x))*12, vy: Math.sin(Math.atan2(mouse.y-player.y, mouse.x-player.x))*12, type: 'flash', timer: 40});
+        player.flashes--;
+    }
+    if (e.key === 'e' && player.smokes > 0) { // スモーク
+        smokes.push({x: mouse.x, y: mouse.y, r: 0, maxR: 90, life: 600});
         player.smokes--;
     }
 });
 
-function fireBullet(owner, tx, ty, spread, color) {
-    const angle = Math.atan2(ty - owner.y, tx - owner.x) + (Math.random() - 0.5) * spread;
-    bullets.push({
-        x: owner.x, y: owner.y,
-        vx: Math.cos(angle) * 20,
-        vy: Math.sin(angle) * 20,
-        color: color,
-        owner: owner === player ? 'player' : 'bot'
-    });
+// --- 視線・衝突判定 ---
+function isWall(x, y) {
+    return walls.some(w => x > w.x && x < w.x+w.w && y > w.y && y < w.y+w.h);
 }
 
-// --- メインループ ---
-function update() {
-    if (player.hp <= 0) return;
-    if (shake > 0) shake *= 0.9;
-
-    // 移動
-    player.isWalking = keys['shift'];
-    let curSpeed = player.isWalking ? player.speed * 0.5 : player.speed;
-    let dx = 0, dy = 0;
-    if (keys['w']) dy -= curSpeed;
-    if (keys['s']) dy += curSpeed;
-    if (keys['a']) dx -= curSpeed;
-    if (keys['d']) dx += curSpeed;
-
-    // 足音ロジック
-    if (dx !== 0 || dy !== 0) {
-        player.noise = player.isWalking ? 20 : 150;
-    } else {
-        player.noise = Math.max(0, player.noise - 10);
+function canSee(a, b) {
+    const dist = Math.hypot(b.x-a.x, b.y-a.y);
+    const ang = Math.atan2(b.y-a.y, b.x-a.x);
+    for(let d=0; d<dist; d+=15) {
+        if (isWall(a.x+Math.cos(ang)*d, a.y+Math.sin(ang)*d)) return false;
     }
+    return true;
+}
 
-    // 衝突判定
-    let nx = player.x + dx;
-    let ny = player.y + dy;
-    let cx = false, cy = false;
-    walls.forEach(w => {
-        if (nx > w.x-10 && nx < w.x+w.w+10 && player.y > w.y-10 && player.y < w.y+w.h+10) cx = true;
-        if (player.x > w.x-10 && player.x < w.x+w.w+10 && ny > w.y-10 && ny < w.y+w.h+10) cy = true;
-    });
-    if (!cx) player.x = nx;
-    if (!cy) player.y = ny;
+// --- メインアップデート ---
+function update() {
+    // プレイヤー移動
+    let spd = keys['shift'] ? 1.5 : 3.5;
+    let dx=0, dy=0;
+    if(keys['w']) dy -= spd; if(keys['s']) dy += spd;
+    if(keys['a']) dx -= spd; if(keys['d']) dx += spd;
+    if(!isWall(player.x+dx, player.y)) player.x += dx;
+    if(!isWall(player.x, player.y+dy)) player.y += dy;
+    if(dx===0 && dy===0) player.recoil = Math.max(0, player.recoil - 0.5);
 
-    // スモーク更新
-    smokes.forEach((s, i) => {
-        if (s.r < s.maxR) s.r += 2;
-        s.life--;
-        if (s.life <= 0) smokes.splice(i, 1);
+    // エンティティ（フラッシュ）
+    entities.forEach((ent, i) => {
+        ent.x += ent.vx; ent.y += ent.vy; ent.timer--;
+        if (ent.timer <= 0) {
+            // 炸裂
+            const dist = Math.hypot(player.x - ent.x, player.y - ent.y);
+            if (dist < 400 && canSee(player, ent)) {
+                flashOverlay.style.opacity = 1; // プレイヤー目潰し
+            }
+            bots.forEach(b => {
+                if(Math.hypot(b.x-ent.x, b.y-ent.y) < 500 && canSee(b, ent)) b.blinded = 180;
+            });
+            entities.splice(i, 1);
+        }
     });
+
+    // 目潰し回復
+    const curOpacity = parseFloat(flashOverlay.style.opacity) || 0;
+    if (curOpacity > 0) flashOverlay.style.opacity = curOpacity - 0.01;
 
     // BOT AI
     bots.forEach(bot => {
         if (bot.hp <= 0) return;
-        const dToP = getDist(bot, player);
-        const canSeePlayer = canSee(bot, player);
-        const hearsPlayer = dToP < player.noise;
+        if (bot.blinded > 0) { bot.blinded--; return; }
 
-        if (canSeePlayer) {
-            bot.angle = Math.atan2(player.y - bot.y, player.x - bot.x);
-            bot.reaction++;
-            if (bot.reaction > 15 && Date.now() - bot.lastShoot > 400) {
-                fireBullet(bot, player.x, player.y, 0.05, '#ff4655');
-                bot.lastShoot = Date.now();
+        if (canSee(bot, player) && player.hp > 0) {
+            if (Math.random() < 0.05) { // 射撃
+                const ang = Math.atan2(player.y - bot.y, player.x - bot.x);
+                bullets.push({x: bot.x, y: bot.y, vx: Math.cos(ang)*15, vy: Math.sin(ang)*15, owner: 'bot'});
             }
-        } else if (hearsPlayer) {
-            // 足音がした方向を向く
-            bot.angle = Math.atan2(player.y - bot.y, player.x - bot.x);
-            bot.reaction = 0;
-        } else {
-            bot.reaction = 0;
-            bot.angle += Math.sin(Date.now() / 1000) * 0.02;
         }
     });
 
-    // 弾丸
+    // 弾丸処理
     bullets.forEach((b, i) => {
         b.x += b.vx; b.y += b.vy;
-        walls.forEach(w => {
-            if (b.x > w.x && b.x < w.x+w.w && b.y > w.y && b.y < w.y+w.h) bullets.splice(i, 1);
-        });
+        if (isWall(b.x, b.y)) bullets.splice(i, 1);
+        
         if (b.owner === 'player') {
             bots.forEach(bot => {
-                if (bot.hp > 0 && getDist(b, bot) < 15) {
-                    bot.hp -= 40; bullets.splice(i, 1);
-                    createParticles(bot.x, bot.y, '#ff4655');
+                const d = Math.hypot(b.x-bot.x, b.y-bot.y);
+                if (bot.hp > 0 && d < bot.r) {
+                    const isHead = d < 6; // 中心に近いほどヘッドショット
+                    bot.hp -= isHead ? 100 : 35;
+                    if (bot.hp <= 0) document.getElementById('kill-feed').innerText = isHead ? "HEADSHOT KILL" : "KILLED BOT";
+                    bullets.splice(i, 1);
                 }
             });
         } else {
-            if (getDist(b, player) < 15) {
-                player.hp -= 25; bullets.splice(i, 1);
-                shake = 10;
-                createParticles(player.x, player.y, '#00eeff');
+            if (Math.hypot(b.x-player.x, b.y-player.y) < player.r) {
+                player.hp -= 20;
+                bullets.splice(i, 1);
             }
         }
     });
 
-    // UI更新
-    document.getElementById('hp-ui').innerText = `HP: ${Math.max(0, Math.ceil(player.hp))}`;
-    if (bots.every(b => b.hp <= 0)) document.getElementById('msg').style.display = 'block';
+    // UI
+    document.getElementById('hp-val').innerText = Math.max(0, player.hp);
+    document.getElementById('q-val').innerText = player.flashes;
+    document.getElementById('e-val').innerText = player.smokes;
 }
 
-function createParticles(x, y, color) {
-    for(let i=0; i<5; i++) particles.push({x, y, vx:(Math.random()-0.5)*5, vy:(Math.random()-0.5)*5, life:20, color});
-}
-
+// --- 描画 ---
 function draw() {
-    ctx.save();
-    ctx.translate(Math.random()*shake, Math.random()*shake);
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#101823';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // 1. 壁の描画
-    ctx.fillStyle = '#1f2326';
+    // 壁
+    ctx.fillStyle = '#2d3741';
     walls.forEach(w => ctx.fillRect(w.x, w.y, w.w, w.h));
 
-    // 2. 足音の可視化 (プレイヤー周辺)
-    if (player.noise > 20) {
-        ctx.strokeStyle = `rgba(255, 255, 255, ${player.noise/300})`;
-        ctx.beginPath(); ctx.arc(player.x, player.y, player.noise, 0, Math.PI*2); ctx.stroke();
-    }
-
-    // 3. エフェクトと弾
-    particles.forEach((p, i) => {
-        p.x += p.vx; p.y += p.vy; p.life--;
-        ctx.fillStyle = p.color;
-        ctx.fillRect(p.x, p.y, 3, 3);
-        if(p.life <= 0) particles.splice(i, 1);
-    });
-    bullets.forEach(b => {
-        ctx.fillStyle = b.color;
-        ctx.fillRect(b.x, b.y, 4, 4);
-    });
-
-    // 4. スモーク
+    // スモーク
     smokes.forEach(s => {
-        ctx.fillStyle = 'rgba(100, 100, 120, 0.9)';
+        if(s.r < s.maxR) s.r += 3;
+        ctx.fillStyle = 'rgba(120, 130, 150, 0.8)';
         ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, Math.PI*2); ctx.fill();
     });
 
-    // 5. キャラクター (視界内のみ)
-    bots.forEach(bot => {
-        if (bot.hp > 0 && canSee(player, bot)) {
-            ctx.save();
-            ctx.translate(bot.x, bot.y);
-            ctx.rotate(bot.angle);
-            ctx.fillStyle = '#ff4655';
-            ctx.beginPath(); ctx.moveTo(15, 0); ctx.lineTo(-10, -10); ctx.lineTo(-10, 10); ctx.fill();
-            ctx.restore();
-            // HPバー
-            ctx.fillStyle = 'red'; ctx.fillRect(bot.x-15, bot.y-25, 30, 4);
-            ctx.fillStyle = 'lime'; ctx.fillRect(bot.x-15, bot.y-25, 30 * (bot.hp/100), 4);
-        }
+    // フラッシュ弾
+    entities.forEach(ent => {
+        ctx.fillStyle = 'white';
+        ctx.beginPath(); ctx.arc(ent.x, ent.y, 8, 0, Math.PI*2); ctx.fill();
     });
 
-    // プレイヤー本体
-    ctx.save();
-    ctx.translate(player.x, player.y);
-    ctx.rotate(Math.atan2(mouse.y - player.y, mouse.x - player.x));
-    ctx.fillStyle = '#00eeff';
-    ctx.beginPath(); ctx.moveTo(15, 0); ctx.lineTo(-10, -10); ctx.lineTo(-10, 10); ctx.fill();
-    ctx.restore();
-
-    // 6. ダイナミック・フォグ（視界システム）
-    // プレイヤーの視界の外を暗くする
-    let fog = ctx.createRadialGradient(player.x, player.y, 50, player.x, player.y, 350);
-    fog.addColorStop(0, 'rgba(0,0,0,0)');
-    fog.addColorStop(1, 'rgba(0,0,0,0.95)');
-    ctx.fillStyle = fog;
-    ctx.globalCompositeOperation = 'multiply'; // 視界以外を暗く
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.globalCompositeOperation = 'source-over';
-
-    // 視界の光（擬似レイトレーシング風）
-    ctx.beginPath();
-    ctx.moveTo(player.x, player.y);
-    for(let a = -1; a < 1; a += 0.05) {
-        const rayAngle = Math.atan2(mouse.y - player.y, mouse.x - player.x) + a;
-        let rx = player.x, ry = player.y;
-        for(let d=0; d<400; d+=10) {
-            rx = player.x + Math.cos(rayAngle) * d;
-            ry = player.y + Math.sin(rayAngle) * d;
-            let hit = false;
-            for(let w of walls) if(rx > w.x && rx < w.x+w.w && ry > w.y && ry < w.y+w.h) hit = true;
-            if(hit) break;
-        }
-        ctx.lineTo(rx, ry);
+    // プレイヤー
+    if (player.hp > 0) {
+        ctx.fillStyle = player.isWalking ? '#888' : '#00eeff';
+        ctx.beginPath(); ctx.arc(player.x, player.y, player.r, 0, Math.PI*2); ctx.fill();
+        // 照準線
+        ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+        ctx.beginPath(); ctx.moveTo(player.x, player.y); ctx.lineTo(mouse.x, mouse.y); ctx.stroke();
     }
-    ctx.fillStyle = 'rgba(255,255,255,0.05)';
-    ctx.fill();
 
-    ctx.restore();
+    // BOT
+    bots.forEach(bot => {
+        if (bot.hp <= 0) return;
+        ctx.fillStyle = bot.blinded > 0 ? 'white' : '#ff4655';
+        ctx.beginPath(); ctx.arc(bot.x, bot.y, bot.r, 0, Math.PI*2); ctx.fill();
+    });
+
+    // 弾丸
+    ctx.fillStyle = '#ffee00';
+    bullets.forEach(b => ctx.fillRect(b.x-2, b.y-2, 4, 4));
 }
 
 function loop() { update(); draw(); requestAnimationFrame(loop); }
