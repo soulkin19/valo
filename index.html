@@ -3,201 +3,170 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>VALORANT 2D - HARDCORE</title>
+    <title>VALORANT 2D: ARENA</title>
     <style>
-        body { margin: 0; background: #0f1923; overflow: hidden; touch-action: none; font-family: 'Arial Black', sans-serif; }
-        canvas { display: block; background: #161d24; cursor: crosshair; }
-        #ui { position: absolute; top: 20px; left: 20px; color: white; pointer-events: none; }
-        #hp-bar { width: 200px; height: 10px; background: #333; margin-top: 5px; border: 1px solid #fff; }
-        #hp-fill { width: 100%; height: 100%; background: #00eeff; transition: 0.1s; }
-        #msg { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #ff4655; font-size: 80px; display: none; text-shadow: 4px 4px 0px #000; }
+        body { margin: 0; background: #0b1115; overflow: hidden; touch-action: none; font-family: 'Arial Black', sans-serif; }
+        #container { position: relative; width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; }
+        canvas { background: #1a2228; border: 4px solid #ff4655; box-shadow: 0 0 30px rgba(255, 70, 85, 0.3); }
+        #ui { position: absolute; bottom: 30px; width: 800px; display: flex; justify-content: space-between; color: white; pointer-events: none; }
+        .stat { background: rgba(15, 25, 35, 0.9); padding: 10px 30px; border-left: 6px solid #ff4655; font-size: 30px; }
+        #killlog { position: absolute; top: 50px; right: 50px; color: #ff4655; font-size: 24px; text-align: right; }
     </style>
 </head>
 <body>
-    <canvas id="game"></canvas>
-    <div id="ui">
-        <div style="font-size: 14px; color: #8b978f;">ARMOR: 50 | HP</div>
-        <div id="hp-val" style="font-size: 32px; font-weight: bold;">100</div>
-        <div id="hp-bar"><div id="hp-fill"></div></div>
+    <div id="container">
+        <canvas id="game"></canvas>
+        <div id="killlog"></div>
+        <div id="ui">
+            <div class="stat">HP: <span id="hp">100</span></div>
+            <div class="stat">VANDAL: <span id="ammo">25</span></div>
+        </div>
     </div>
-    <div id="msg">ELIMINATED</div>
 
 <script>
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
-const hpVal = document.getElementById('hp-val');
-const hpFill = document.getElementById('hp-fill');
-const msg = document.getElementById('msg');
+canvas.width = 1000; canvas.height = 700;
 
-function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
-window.onresize = resize; resize();
-
-// --- プレイヤー設定 ---
-let p = { x: 150, y: 300, r: 16, ang: 0, hp: 100, recoil: 0 };
-let keys = {};
-let bullets = [];
-let particles = [];
-
-// --- 地形 ---
-const walls = [
-    {x: 400, y: 0, w: 80, h: 400}, {x: 400, y: 600, w: 80, h: 800},
-    {x: 700, y: 350, w: 300, h: 80}, {x: 1100, y: 0, w: 80, h: 500}
-];
-
-// --- BOT設定（最強クラス） ---
+// --- 設定 ---
+let player = { x: 100, y: 350, r: 15, hp: 100, ang: 0, recoil: 0 };
 let bots = [
-    { x: 900, y: 200, hp: 100, r: 16, lastShot: 0, reaction: 0, targetX: 900, targetY: 200 },
-    { x: 1300, y: 700, hp: 100, r: 16, lastShot: 0, reaction: 0, targetX: 1300, targetY: 700 }
+    { x: 850, y: 150, r: 15, hp: 100, state: 'peek', dir: 1, lastShot: 0, reaction: 0 },
+    { x: 850, y: 550, r: 15, hp: 100, state: 'peek', dir: -1, lastShot: 0, reaction: 0 }
 ];
+let walls = [
+    {x: 450, y: 100, w: 100, h: 200}, {x: 450, y: 400, w: 100, h: 200}, // 中央遮蔽
+    {x: 750, y: 0, w: 40, h: 150}, {x: 750, y: 550, w: 40, h: 150}      // 敵陣営の守り
+];
+let bullets = [], particles = [], keys = {};
 
-// --- 操作：クリック/タップで即座にその方向へ向いて発射 ---
-window.addEventListener('pointerdown', (e) => {
-    if (p.hp <= 0) return;
+// --- 入力（iPad/PC共通） ---
+function handleInput(e) {
+    if (player.hp <= 0) return;
+    const rect = canvas.getBoundingClientRect();
+    const tx = (e.clientX || e.touches[0].clientX) - rect.left;
+    const ty = (e.clientY || e.touches[0].clientY) - rect.top;
     
-    // 1. 座標を取得して角度を即座に更新（エイム修正）
-    const tx = e.clientX;
-    const ty = e.clientY;
-    p.ang = Math.atan2(ty - p.y, tx - p.x);
+    // 即座に方向転換
+    player.ang = Math.atan2(ty - player.y, tx - player.x);
     
-    // 2. 発射
-    shoot(p, tx, ty, 'player');
-});
-
-function shoot(who, tx, ty, owner) {
-    const angle = Math.atan2(ty - who.y, tx - who.x);
-    // ストッピング判定（移動中は大きく散る）
+    // 射撃
     const isMoving = keys['w'] || keys['a'] || keys['s'] || keys['d'];
-    const spread = (owner === 'player') ? (isMoving ? 0.2 : 0.01 + p.recoil) : 0.02;
-    const finalAngle = angle + (Math.random() - 0.5) * spread;
+    const spread = isMoving ? 0.2 : 0.01 + player.recoil;
+    const finalAngle = player.ang + (Math.random() - 0.5) * spread;
 
-    bullets.push({
-        x: who.x, y: who.y,
-        vx: Math.cos(finalAngle) * 35,
-        vy: Math.sin(finalAngle) * 35,
-        owner: owner
-    });
-    
-    if(owner === 'player') p.recoil = Math.min(p.recoil + 0.05, 0.2);
+    bullets.push({ x: player.x, y: player.y, vx: Math.cos(finalAngle)*35, vy: Math.sin(finalAngle)*35, owner: 'p' });
+    player.recoil = Math.min(player.recoil + 0.06, 0.25);
 }
 
+window.addEventListener('pointerdown', (e) => { handleInput(e); e.preventDefault(); }, {passive: false});
 window.onkeydown = (e) => keys[e.key.toLowerCase()] = true;
 window.onkeyup = (e) => keys[e.key.toLowerCase()] = false;
 
-function isWall(nx, ny, r) {
-    return walls.some(w => nx > w.x-r && nx < w.x+w.w+r && ny > w.y-r && ny < w.y+w.h+r);
+function isWall(nx, ny) {
+    if (nx < 0 || nx > canvas.width || ny < 0 || ny > canvas.height) return true;
+    return walls.some(w => nx > w.x-15 && nx < w.x+w.w+15 && ny > w.y-15 && ny < w.y+w.h+15);
 }
 
-function canSee(a, b) {
-    const dist = Math.hypot(b.x - a.x, b.y - a.y);
-    const ang = Math.atan2(b.y - a.y, b.x - a.x);
-    for(let d=0; d<dist; d+=20) {
-        if(isWall(a.x + Math.cos(ang)*d, a.y + Math.sin(ang)*d, 2)) return false;
-    }
-    return true;
-}
-
+// --- メインループ ---
 function update() {
-    if (p.hp <= 0) return;
+    if (player.hp <= 0) return;
 
-    // プレイヤー移動
-    let dx = 0, dy = 0;
-    const speed = keys['shift'] ? 2.5 : 5;
-    if (keys['w']) dy -= speed; if (keys['s']) dy += speed;
-    if (keys['a']) dx -= speed; if (keys['d']) dx += speed;
-    
-    if (!isWall(p.x + dx, p.y, p.r)) p.x += dx;
-    if (!isWall(p.x, p.y + dy, p.r)) p.y += dy;
-    if (dx === 0 && dy === 0) p.recoil = Math.max(0, p.recoil - 0.01);
+    // 移動
+    let dx=0, dy=0;
+    if(keys['w']) dy-=4.5; if(keys['s']) dy+=4.5;
+    if(keys['a']) dx-=4.5; if(keys['d']) dx+=4.5;
+    if(!isWall(player.x+dx, player.y)) player.x += dx;
+    if(!isWall(player.x, player.y+dy)) player.y += dy;
+    if(dx===0 && dy===0) player.recoil = Math.max(0, player.recoil - 0.01);
 
-    // BOT AI (エリートモード)
+    // BOT AI（最強・画面内固定）
     bots.forEach(bot => {
         if (bot.hp <= 0) return;
-
-        const visible = canSee(bot, p);
-        if (visible) {
-            bot.reaction++;
-            // 反応速度 0.15秒 (約9フレーム)
-            if (bot.reaction > 9) {
-                if (Date.now() - bot.lastShot > 400) {
-                    shoot(bot, p.x, p.y, 'bot');
-                    bot.lastShot = Date.now();
-                }
-            }
-        } else {
-            bot.reaction = 0;
-            // プレイヤーがいない時はランダムに巡回移動
-            if (Math.random() < 0.02) {
-                bot.targetX = bot.x + (Math.random()-0.5)*200;
-                bot.targetY = bot.y + (Math.random()-0.5)*200;
-            }
-        }
         
-        // BOTの微細な移動（エイムをそらす）
-        const bdx = (bot.targetX - bot.x) * 0.05;
-        const bdy = (bot.targetY - bot.y) * 0.05;
-        if (!isWall(bot.x + bdx, bot.y + bdy, bot.r)) {
-            bot.x += bdx; bot.y += bdy;
+        // 遮蔽物からチラ見（ピーキング）する動き
+        bot.y += bot.dir * 2;
+        if (isWall(bot.x, bot.y + bot.dir*20)) bot.dir *= -1;
+
+        // 視線チェック
+        const dist = Math.hypot(player.x-bot.x, player.y-bot.y);
+        let wallBetween = false;
+        for(let w of walls) {
+            if (lineRect(bot.x, bot.y, player.x, player.y, w)) wallBetween = true;
         }
+
+        if (!wallBetween) {
+            bot.reaction++;
+            if (bot.reaction > 10 && Date.now() - bot.lastShot > 350) { // 反応0.16秒
+                const ang = Math.atan2(player.y-bot.y, player.x-bot.x);
+                bullets.push({x: bot.x, y: bot.y, vx: Math.cos(ang)*22, vy: Math.sin(ang)*22, owner: 'b'});
+                bot.lastShot = Date.now();
+            }
+        } else { bot.reaction = 0; }
     });
 
-    // 弾丸処理
+    // 弾丸
     bullets.forEach((b, i) => {
         b.x += b.vx; b.y += b.vy;
-        
-        if (isWall(b.x, b.y, 2)) { bullets.splice(i, 1); return; }
+        if (isWall(b.x, b.y)) { bullets.splice(i, 1); return; }
 
-        if (b.owner === 'player') {
+        if (b.owner === 'p') {
             bots.forEach(bot => {
-                if (bot.hp > 0 && Math.hypot(b.x - bot.x, b.y - bot.y) < bot.r + 5) {
-                    bot.hp -= 40; bullets.splice(i, 1);
-                    createBlood(bot.x, bot.y);
+                const d = Math.hypot(b.x-bot.x, b.y-bot.y);
+                if (bot.hp > 0 && d < 20) {
+                    const head = d < 8;
+                    bot.hp -= head ? 100 : 35;
+                    bullets.splice(i, 1);
+                    createHit(bot.x, bot.y, '#ff4655');
+                    if(bot.hp <= 0) document.getElementById('killlog').innerText += head ? "HEADSHOT KILL\n" : "KILLED BOT\n";
                 }
             });
-        } else {
-            if (Math.hypot(b.x - p.x, b.y - p.y) < p.r + 5) {
-                p.hp -= 34; // 3発で死ぬ
-                bullets.splice(i, 1);
-                createBlood(p.x, p.y);
-                hpVal.innerText = Math.max(0, Math.ceil(p.hp));
-                hpFill.style.width = Math.max(0, p.hp) + "%";
-                if(p.hp <= 0) msg.style.display = 'block';
-            }
+        } else if (Math.hypot(b.x-player.x, b.y-player.y) < 15) {
+            player.hp -= 34; bullets.splice(i, 1);
+            createHit(player.x, player.y, '#00eeff');
+            document.getElementById('hp').innerText = Math.max(0, player.hp);
         }
     });
 }
 
-function createBlood(x, y) {
-    for(let i=0; i<8; i++) particles.push({x, y, vx:(Math.random()-0.5)*10, vy:(Math.random()-0.5)*10, life:20});
+function createHit(x, y, color) {
+    for(let i=0; i<10; i++) particles.push({x, y, vx:(Math.random()-0.5)*12, vy:(Math.random()-0.5)*12, life:15, color});
+}
+
+function lineRect(x1, y1, x2, y2, r) {
+    const intersect = (x3, y3, x4, y4) => {
+        let det = (x2-x1)*(y4-y3) - (y2-y1)*(x4-x3);
+        if (det === 0) return false;
+        let lambda = ((y4-y3)*(x4-x1) + (x3-x4)*(y4-y1)) / det;
+        let gamma = ((y1-y2)*(x4-x1) + (x2-x1)*(y4-y1)) / det;
+        return (0 < lambda && lambda < 1) && (0 < gamma && gamma < 1);
+    }
+    return intersect(r.x, r.y, r.x+r.w, r.y) || intersect(r.x, r.y+r.h, r.x+r.w, r.y+r.h) ||
+           intersect(r.x, r.y, r.x, r.y+r.h) || intersect(r.x+r.w, r.y, r.x+r.w, r.y+r.h);
 }
 
 function draw() {
-    ctx.fillStyle = '#101823';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // 背景
+    ctx.strokeStyle = '#252a30'; ctx.lineWidth = 1;
+    for(let i=0; i<1000; i+=40) { ctx.beginPath(); ctx.moveTo(i,0); ctx.lineTo(i,700); ctx.stroke(); }
+    for(let i=0; i<700; i+=40) { ctx.beginPath(); ctx.moveTo(0,i); ctx.lineTo(1000,i); ctx.stroke(); }
 
     // 壁
-    ctx.fillStyle = '#2d3741';
-    walls.forEach(w => {
-        ctx.fillRect(w.x, w.y, w.w, w.h);
-        ctx.strokeStyle = '#ff4655'; ctx.lineWidth = 2; ctx.strokeRect(w.x, w.y, w.w, w.h);
-    });
+    ctx.fillStyle = '#2d3741'; ctx.strokeStyle = '#ff4655'; ctx.lineWidth = 3;
+    walls.forEach(w => { ctx.fillRect(w.x, w.y, w.w, w.h); ctx.strokeRect(w.x, w.y, w.w, w.h); });
 
-    // 血しぶき
-    particles.forEach((part, i) => {
-        part.x += part.vx; part.y += part.vy; part.life--;
-        ctx.fillStyle = `rgba(255, 70, 85, ${part.life/20})`;
-        ctx.fillRect(part.x, part.y, 4, 4);
-        if(part.life <= 0) particles.splice(i, 1);
+    // エフェクト
+    particles.forEach((p, i) => {
+        p.x += p.vx; p.y += p.vy; p.life--;
+        ctx.fillStyle = p.color; ctx.fillRect(p.x, p.y, 4, 4);
+        if(p.life <= 0) particles.splice(i, 1);
     });
 
     // プレイヤー
-    if (p.hp > 0) {
-        ctx.save();
-        ctx.translate(p.x, p.y);
-        ctx.rotate(p.ang);
-        // 体
-        ctx.fillStyle = '#00eeff';
-        ctx.beginPath(); ctx.arc(0, 0, p.r, 0, Math.PI*2); ctx.fill();
-        // 銃（エイム方向）
+    if (player.hp > 0) {
+        ctx.save(); ctx.translate(player.x, player.y); ctx.rotate(player.ang);
+        ctx.fillStyle = '#00eeff'; ctx.beginPath(); ctx.arc(0, 0, player.r, 0, Math.PI*2); ctx.fill();
         ctx.fillStyle = 'white'; ctx.fillRect(10, -3, 20, 6);
         ctx.restore();
     }
@@ -205,24 +174,15 @@ function draw() {
     // BOT
     bots.forEach(bot => {
         if (bot.hp <= 0) return;
-        ctx.fillStyle = '#ff4655';
-        ctx.beginPath(); ctx.arc(bot.x, bot.y, bot.r, 0, Math.PI*2); ctx.fill();
-        // 視覚的な向き（プレイヤーの方を向く）
-        const ang = Math.atan2(p.y - bot.y, p.x - bot.x);
+        ctx.fillStyle = '#ff4655'; ctx.beginPath(); ctx.arc(bot.x, bot.y, bot.r, 0, Math.PI*2); ctx.fill();
+        const ang = Math.atan2(player.y-bot.y, player.x-bot.x);
         ctx.save(); ctx.translate(bot.x, bot.y); ctx.rotate(ang);
         ctx.fillStyle = 'black'; ctx.fillRect(10, -2, 15, 4); ctx.restore();
     });
 
-    // 弾丸
+    // 弾
     ctx.fillStyle = '#fff200';
     bullets.forEach(b => ctx.fillRect(b.x-2, b.y-2, 4, 4));
-
-    // 暗闇エフェクト（視界）
-    const grad = ctx.createRadialGradient(p.x, p.y, 50, p.x, p.y, 500);
-    grad.addColorStop(0, 'rgba(0,0,0,0)');
-    grad.addColorStop(1, 'rgba(15,25,35,0.9)');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
 }
 
 function loop() { update(); draw(); requestAnimationFrame(loop); }
