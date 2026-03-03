@@ -2,113 +2,213 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Mini VALORANT Prototype</title>
+    <title>VALORANT 2D - Hardcore Edition</title>
     <style>
-        body { margin: 0; background: #0f1923; display: flex; justify-content: center; align-items: center; height: 100vh; color: white; font-family: sans-serif; overflow: hidden; }
-        canvas { border: 2px solid #ff4655; background: #1f2326; cursor: crosshair; }
-        .ui { position: absolute; top: 20px; left: 20px; pointer-events: none; }
+        body { margin: 0; background: #0f1923; overflow: hidden; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; }
+        canvas { background: #1f2326; cursor: crosshair; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
+        #ui { position: absolute; top: 10px; width: 800px; display: flex; justify-content: space-between; color: white; pointer-events: none; text-shadow: 2px 2px 4px black; }
+        .stat { font-size: 24px; font-weight: bold; }
+        #spike-alert { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #ff4655; font-size: 48px; font-weight: bold; display: none; }
     </style>
 </head>
 <body>
-    <div class="ui">
-        <h1>Mini VALORANT</h1>
-        <p>WASDで移動 | クリックで射撃 (静止すると精度UP)</p>
+    <div id="ui">
+        <div class="stat">HP: <span id="hp">100</span></div>
+        <div id="timer" class="stat">SPIKE READY</div>
+        <div class="stat">BOT: <span id="bot-hp">100</span></div>
     </div>
-    <canvas id="gameCanvas"></canvas>
+    <div id="spike-alert">SPIKE PLANTED</div>
+    <canvas id="game"></canvas>
 
-    <script>
-        const canvas = document.getElementById('gameCanvas');
-        const ctx = canvas.getContext('2d');
-        canvas.width = 800;
-        canvas.height = 600;
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+canvas.width = 800; canvas.height = 600;
 
-        const player = {
-            x: 100, y: 100, size: 20, color: '#00eeff', speed: 3,
-            dx: 0, dy: 0, isMoving: false
-        };
+// --- 設定 ---
+const PLAYER_SPEED = 2.5;
+const BOT_REACTION_TIME = 15; // フレーム単位（小さいほど最強）
+const RECOIL_INCREASE = 0.05;
 
-        const bullets = [];
-        const walls = [
-            {x: 200, y: 150, w: 400, h: 20}, // 中央の壁
-            {x: 300, y: 300, w: 20, h: 200}, // 縦の遮蔽物
-        ];
+// --- ゲーム状態 ---
+let player = { x: 50, y: 300, hp: 100, size: 15, color: '#00eeff', isMoving: false };
+let bot = { x: 700, y: 300, hp: 100, size: 15, color: '#ff4655', lastSeen: 0, recoil: 0 };
+let bullets = [];
+let walls = [
+    {x: 200, y: 0, w: 40, h: 250}, {x: 200, y: 350, w: 40, h: 250}, // センターゲート
+    {x: 500, y: 150, w: 40, h: 300}, // Bサイト遮蔽物
+    {x: 350, y: 280, w: 100, h: 40}  // ミッドボックス
+];
+let spike = { x: 0, y: 0, planted: false, timer: 45, progress: 0 };
+let keys = {};
+let mouse = { x: 0, y: 0 };
+let playerRecoil = 0;
 
-        const keys = {};
-        window.onkeydown = (e) => keys[e.key.toLowerCase()] = true;
-        window.onkeyup = (e) => keys[e.key.toLowerCase()] = false;
+// 入力イベント
+window.onkeydown = (e) => keys[e.key.toLowerCase()] = true;
+window.onkeyup = (e) => keys[e.key.toLowerCase()] = false;
+canvas.onmousemove = (e) => {
+    const rect = canvas.getBoundingClientRect();
+    mouse.x = e.clientX - rect.left;
+    mouse.y = e.clientY - rect.top;
+};
 
-        // 射撃処理
-        canvas.onclick = (e) => {
-            const rect = canvas.getBoundingClientRect();
-            const mouseX = e.clientX - rect.left;
-            const mouseY = e.clientY - rect.top;
-            
-            // 角度計算: $\theta = \operatorname{atan2}(dy, dx)$
-            const angle = Math.atan2(mouseY - player.y, mouseX - player.x);
-            
-            // 移動中は精度が落ちる（VALORANT風）
-            const spread = player.isMoving ? (Math.random() - 0.5) * 0.2 : 0;
-            
-            bullets.push({
-                x: player.x, y: player.y,
-                vx: Math.cos(angle + spread) * 10,
-                vy: Math.sin(angle + spread) * 10
-            });
-        };
+// 射撃関数
+function shoot(from, toX, toY, isBot = false) {
+    const angle = Math.atan2(toY - from.y, toX - from.x);
+    const spread = (isBot ? bot.recoil : playerRecoil) + (from.isMoving ? 0.15 : 0);
+    const finalAngle = angle + (Math.random() - 0.5) * spread;
+    
+    bullets.push({
+        x: from.x, y: from.y,
+        vx: Math.cos(finalAngle) * 15,
+        vy: Math.sin(finalAngle) * 15,
+        owner: isBot ? 'bot' : 'player'
+    });
+    
+    if (isBot) bot.recoil = Math.min(bot.recoil + RECOIL_INCREASE, 0.4);
+    else playerRecoil = Math.min(playerRecoil + RECOIL_INCREASE, 0.4);
+}
 
-        function update() {
-            // 移動処理
-            player.dx = 0; player.dy = 0;
-            if (keys['w']) player.dy = -player.speed;
-            if (keys['s']) player.dy = player.speed;
-            if (keys['a']) player.dx = -player.speed;
-            if (keys['d']) player.dx = player.speed;
+canvas.onmousedown = () => { if(player.hp > 0) shoot(player, mouse.x, mouse.y); };
 
-            player.isMoving = player.dx !== 0 || player.dy !== 0;
-
-            // 壁との衝突判定（簡易）
-            let nextX = player.x + player.dx;
-            let nextY = player.y + player.dy;
-
-            walls.forEach(w => {
-                if (nextX > w.x && nextX < w.x + w.w && player.y > w.y && player.y < w.y + w.h) player.dx = 0;
-                if (player.x > w.x && player.x < w.x + w.w && nextY > w.y && nextY < w.y + w.h) player.dy = 0;
-            });
-
-            player.x += player.dx;
-            player.y += player.dy;
-
-            // 弾の移動
-            bullets.forEach((b, i) => {
-                b.x += b.vx; b.y += b.vy;
-                if (b.x < 0 || b.x > canvas.width || b.y < 0 || b.y > canvas.height) bullets.splice(i, 1);
-            });
+// 視線チェック（Line of Sight）
+function canSee(a, b) {
+    const dist = Math.hypot(b.x - a.x, b.y - a.y);
+    const angle = Math.atan2(b.y - a.y, b.x - a.x);
+    for (let d = 0; d < dist; d += 5) {
+        const checkX = a.x + Math.cos(angle) * d;
+        const checkY = a.y + Math.sin(angle) * d;
+        for (let w of walls) {
+            if (checkX > w.x && checkX < w.x + w.w && checkY > w.y && checkY < w.y + w.h) return false;
         }
+    }
+    return true;
+}
 
-        function draw() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
+function update() {
+    if (player.hp <= 0 || bot.hp <= 0) return;
 
-            // 壁の描画
-            ctx.fillStyle = '#444';
-            walls.forEach(w => ctx.fillRect(w.x, w.y, w.w, w.h));
+    // プレイヤー移動 & 衝突判定
+    let dx = 0, dy = 0;
+    if (keys['w']) dy -= PLAYER_SPEED;
+    if (keys['s']) dy += PLAYER_SPEED;
+    if (keys['a']) dx -= PLAYER_SPEED;
+    if (keys['d']) dx += PLAYER_SPEED;
 
-            // 弾の描画
-            ctx.fillStyle = '#ffff00';
-            bullets.forEach(b => ctx.fillRect(b.x, b.y, 4, 4));
+    player.isMoving = dx !== 0 || dy !== 0;
+    if (!player.isMoving) playerRecoil = Math.max(0, playerRecoil - 0.02);
 
-            // プレイヤーの描画
-            ctx.fillStyle = player.color;
-            ctx.beginPath();
-            ctx.arc(player.x, player.y, player.size/2, 0, Math.PI*2);
-            ctx.fill();
+    let nextX = player.x + dx;
+    let nextY = player.y + dy;
+    let collisionX = false, collisionY = false;
+
+    walls.forEach(w => {
+        if (nextX > w.x - 10 && nextX < w.x + w.w + 10 && player.y > w.y - 10 && player.y < w.y + w.h + 10) collisionX = true;
+        if (player.x > w.x - 10 && player.x < w.x + w.w + 10 && nextY > w.y - 10 && nextY < w.y + w.h + 10) collisionY = true;
+    });
+
+    if (!collisionX) player.x = Math.max(10, Math.min(790, nextX));
+    if (!collisionY) player.y = Math.max(10, Math.min(590, nextY));
+
+    // 最強BOTのAI
+    const visible = canSee(bot, player);
+    if (visible) {
+        bot.lastSeen++;
+        // 反応速度を超えたら射撃（ほぼ即死級）
+        if (bot.lastSeen > BOT_REACTION_TIME) {
+            if (Math.random() > 0.8) shoot(bot, player.x, player.y, true);
         }
+    } else {
+        bot.lastSeen = 0;
+        bot.recoil = Math.max(0, bot.recoil - 0.02);
+        // プレイヤーが見えない時は少し左右に動く（置きエイム対策）
+        bot.y += Math.sin(Date.now() / 500) * 2;
+    }
 
-        function gameLoop() {
-            update();
-            draw();
-            requestAnimationFrame(gameLoop);
+    // 弾の更新
+    bullets.forEach((b, i) => {
+        b.x += b.vx; b.y += b.vy;
+        
+        // 壁衝突
+        walls.forEach(w => {
+            if (b.x > w.x && b.x < w.x + w.w && b.y > w.y && b.y < w.y + w.h) bullets.splice(i, 1);
+        });
+
+        // 当たり判定
+        if (b.owner === 'player' && Math.hypot(b.x - bot.x, b.y - bot.y) < 15) {
+            bot.hp -= 20; bullets.splice(i, 1);
         }
-        gameLoop();
-    </script>
+        if (b.owner === 'bot' && Math.hypot(b.x - player.x, b.y - player.y) < 15) {
+            player.hp -= 34; // 3発でデス
+            bullets.splice(i, 1);
+        }
+    });
+
+    // スパイク設置（Bキー長押し）
+    if (keys['b'] && player.x > 600) {
+        spike.progress += 0.5;
+        if (spike.progress >= 100 && !spike.planted) {
+            spike.planted = true;
+            spike.x = player.x; spike.y = player.y;
+            document.getElementById('spike-alert').style.display = 'block';
+        }
+    } else {
+        spike.progress = Math.max(0, spike.progress - 1);
+    }
+
+    // UI更新
+    document.getElementById('hp').innerText = Math.ceil(player.hp);
+    document.getElementById('bot-hp').innerText = Math.ceil(bot.hp);
+}
+
+function draw() {
+    ctx.fillStyle = '#1f2326';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // 壁の描画
+    ctx.fillStyle = '#3a3f44';
+    walls.forEach(w => ctx.fillRect(w.x, w.y, w.w, w.h));
+
+    // スパイク描画
+    if (spike.planted) {
+        ctx.fillStyle = '#ff4655';
+        ctx.beginPath(); ctx.arc(spike.x, spike.y, 8, 0, Math.PI*2); ctx.fill();
+    }
+
+    // プレイヤーとBOTの描画（視界内のみ）
+    if (player.hp > 0) {
+        ctx.fillStyle = player.color;
+        ctx.beginPath(); ctx.arc(player.x, player.y, player.size, 0, Math.PI*2); ctx.fill();
+        // 設置ゲージ
+        if (spike.progress > 0 && !spike.planted) {
+            ctx.fillStyle = 'white';
+            ctx.fillRect(player.x - 20, player.y - 30, spike.progress * 0.4, 5);
+        }
+    }
+
+    if (bot.hp > 0 && canSee(player, bot)) {
+        ctx.fillStyle = bot.color;
+        ctx.beginPath(); ctx.arc(bot.x, bot.y, bot.size, 0, Math.PI*2); ctx.fill();
+    }
+
+    // 弾
+    ctx.fillStyle = '#fff200';
+    bullets.forEach(b => ctx.fillRect(b.x, b.y, 3, 3));
+
+    // フォグ・オブ・ウォー（簡易視界エフェクト）
+    const gradient = ctx.createRadialGradient(player.x, player.y, 50, player.x, player.y, 300);
+    gradient.addColorStop(0, 'rgba(0,0,0,0)');
+    gradient.addColorStop(1, 'rgba(0,0,0,0.8)');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    if (player.hp <= 0) { ctx.fillStyle = "white"; ctx.font = "40px Arial"; ctx.fillText("DEFEAT", 330, 300); }
+    if (bot.hp <= 0) { ctx.fillStyle = "#00eeff"; ctx.font = "40px Arial"; ctx.fillText("VICTORY", 330, 300); }
+}
+
+function loop() { update(); draw(); requestAnimationFrame(loop); }
+loop();
+</script>
 </body>
 </html>
