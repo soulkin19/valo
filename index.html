@@ -2,191 +2,158 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>VALORANT 2D: ARENA</title>
+    <title>Mini VALORANT Clone</title>
     <style>
-        body { margin: 0; background: #0b1115; overflow: hidden; touch-action: none; font-family: 'Arial Black', sans-serif; }
-        #container { position: relative; width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; }
-        canvas { background: #1a2228; border: 4px solid #ff4655; box-shadow: 0 0 30px rgba(255, 70, 85, 0.3); }
-        #ui { position: absolute; bottom: 30px; width: 800px; display: flex; justify-content: space-between; color: white; pointer-events: none; }
-        .stat { background: rgba(15, 25, 35, 0.9); padding: 10px 30px; border-left: 6px solid #ff4655; font-size: 30px; }
-        #killlog { position: absolute; top: 50px; right: 50px; color: #ff4655; font-size: 24px; text-align: right; }
+        body { margin: 0; overflow: hidden; font-family: sans-serif; }
+        #crosshair {
+            position: absolute; top: 50%; left: 50%;
+            width: 20px; height: 20px;
+            border: 2px solid #00ff00;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+        }
+        #ui {
+            position: absolute; bottom: 20px; left: 20px;
+            color: white; font-size: 24px; text-shadow: 2px 2px 4px #000;
+        }
+        #msg {
+            position: absolute; top: 20%; width: 100%; text-align: center;
+            color: white; font-size: 20px;
+        }
     </style>
 </head>
 <body>
-    <div id="container">
-        <canvas id="game"></canvas>
-        <div id="killlog"></div>
-        <div id="ui">
-            <div class="stat">HP: <span id="hp">100</span></div>
-            <div class="stat">VANDAL: <span id="ammo">25</span></div>
-        </div>
-    </div>
+    <div id="crosshair"></div>
+    <div id="ui">HP: 100 | Kills: <span id="kills">0</span></div>
+    <div id="msg">クリックして開始 (WASDで移動 / クリックで射撃)</div>
 
-<script>
-const canvas = document.getElementById('game');
-const ctx = canvas.getContext('2d');
-canvas.width = 1000; canvas.height = 700;
-
-// --- 設定 ---
-let player = { x: 100, y: 350, r: 15, hp: 100, ang: 0, recoil: 0 };
-let bots = [
-    { x: 850, y: 150, r: 15, hp: 100, state: 'peek', dir: 1, lastShot: 0, reaction: 0 },
-    { x: 850, y: 550, r: 15, hp: 100, state: 'peek', dir: -1, lastShot: 0, reaction: 0 }
-];
-let walls = [
-    {x: 450, y: 100, w: 100, h: 200}, {x: 450, y: 400, w: 100, h: 200}, // 中央遮蔽
-    {x: 750, y: 0, w: 40, h: 150}, {x: 750, y: 550, w: 40, h: 150}      // 敵陣営の守り
-];
-let bullets = [], particles = [], keys = {};
-
-// --- 入力（iPad/PC共通） ---
-function handleInput(e) {
-    if (player.hp <= 0) return;
-    const rect = canvas.getBoundingClientRect();
-    const tx = (e.clientX || e.touches[0].clientX) - rect.left;
-    const ty = (e.clientY || e.touches[0].clientY) - rect.top;
-    
-    // 即座に方向転換
-    player.ang = Math.atan2(ty - player.y, tx - player.x);
-    
-    // 射撃
-    const isMoving = keys['w'] || keys['a'] || keys['s'] || keys['d'];
-    const spread = isMoving ? 0.2 : 0.01 + player.recoil;
-    const finalAngle = player.ang + (Math.random() - 0.5) * spread;
-
-    bullets.push({ x: player.x, y: player.y, vx: Math.cos(finalAngle)*35, vy: Math.sin(finalAngle)*35, owner: 'p' });
-    player.recoil = Math.min(player.recoil + 0.06, 0.25);
-}
-
-window.addEventListener('pointerdown', (e) => { handleInput(e); e.preventDefault(); }, {passive: false});
-window.onkeydown = (e) => keys[e.key.toLowerCase()] = true;
-window.onkeyup = (e) => keys[e.key.toLowerCase()] = false;
-
-function isWall(nx, ny) {
-    if (nx < 0 || nx > canvas.width || ny < 0 || ny > canvas.height) return true;
-    return walls.some(w => nx > w.x-15 && nx < w.x+w.w+15 && ny > w.y-15 && ny < w.y+w.h+15);
-}
-
-// --- メインループ ---
-function update() {
-    if (player.hp <= 0) return;
-
-    // 移動
-    let dx=0, dy=0;
-    if(keys['w']) dy-=4.5; if(keys['s']) dy+=4.5;
-    if(keys['a']) dx-=4.5; if(keys['d']) dx+=4.5;
-    if(!isWall(player.x+dx, player.y)) player.x += dx;
-    if(!isWall(player.x, player.y+dy)) player.y += dy;
-    if(dx===0 && dy===0) player.recoil = Math.max(0, player.recoil - 0.01);
-
-    // BOT AI（最強・画面内固定）
-    bots.forEach(bot => {
-        if (bot.hp <= 0) return;
-        
-        // 遮蔽物からチラ見（ピーキング）する動き
-        bot.y += bot.dir * 2;
-        if (isWall(bot.x, bot.y + bot.dir*20)) bot.dir *= -1;
-
-        // 視線チェック
-        const dist = Math.hypot(player.x-bot.x, player.y-bot.y);
-        let wallBetween = false;
-        for(let w of walls) {
-            if (lineRect(bot.x, bot.y, player.x, player.y, w)) wallBetween = true;
-        }
-
-        if (!wallBetween) {
-            bot.reaction++;
-            if (bot.reaction > 10 && Date.now() - bot.lastShot > 350) { // 反応0.16秒
-                const ang = Math.atan2(player.y-bot.y, player.x-bot.x);
-                bullets.push({x: bot.x, y: bot.y, vx: Math.cos(ang)*22, vy: Math.sin(ang)*22, owner: 'b'});
-                bot.lastShot = Date.now();
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
             }
-        } else { bot.reaction = 0; }
-    });
-
-    // 弾丸
-    bullets.forEach((b, i) => {
-        b.x += b.vx; b.y += b.vy;
-        if (isWall(b.x, b.y)) { bullets.splice(i, 1); return; }
-
-        if (b.owner === 'p') {
-            bots.forEach(bot => {
-                const d = Math.hypot(b.x-bot.x, b.y-bot.y);
-                if (bot.hp > 0 && d < 20) {
-                    const head = d < 8;
-                    bot.hp -= head ? 100 : 35;
-                    bullets.splice(i, 1);
-                    createHit(bot.x, bot.y, '#ff4655');
-                    if(bot.hp <= 0) document.getElementById('killlog').innerText += head ? "HEADSHOT KILL\n" : "KILLED BOT\n";
-                }
-            });
-        } else if (Math.hypot(b.x-player.x, b.y-player.y) < 15) {
-            player.hp -= 34; bullets.splice(i, 1);
-            createHit(player.x, player.y, '#00eeff');
-            document.getElementById('hp').innerText = Math.max(0, player.hp);
         }
-    });
-}
+    </script>
 
-function createHit(x, y, color) {
-    for(let i=0; i<10; i++) particles.push({x, y, vx:(Math.random()-0.5)*12, vy:(Math.random()-0.5)*12, life:15, color});
-}
+    <script type="module">
+        import * as THREE from 'three';
 
-function lineRect(x1, y1, x2, y2, r) {
-    const intersect = (x3, y3, x4, y4) => {
-        let det = (x2-x1)*(y4-y3) - (y2-y1)*(x4-x3);
-        if (det === 0) return false;
-        let lambda = ((y4-y3)*(x4-x1) + (x3-x4)*(y4-y1)) / det;
-        let gamma = ((y1-y2)*(x4-x1) + (x2-x1)*(y4-y1)) / det;
-        return (0 < lambda && lambda < 1) && (0 < gamma && gamma < 1);
-    }
-    return intersect(r.x, r.y, r.x+r.w, r.y) || intersect(r.x, r.y+r.h, r.x+r.w, r.y+r.h) ||
-           intersect(r.x, r.y, r.x, r.y+r.h) || intersect(r.x+r.w, r.y, r.x+r.w, r.y+r.h);
-}
+        // --- 設定 ---
+        let kills = 0;
+        const bots = [];
+        const clock = new THREE.Clock();
+        
+        // --- シーン・カメラ・レンダラー ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87ceeb); // 青空
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
 
-function draw() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    // 背景
-    ctx.strokeStyle = '#252a30'; ctx.lineWidth = 1;
-    for(let i=0; i<1000; i+=40) { ctx.beginPath(); ctx.moveTo(i,0); ctx.lineTo(i,700); ctx.stroke(); }
-    for(let i=0; i<700; i+=40) { ctx.beginPath(); ctx.moveTo(0,i); ctx.lineTo(1000,i); ctx.stroke(); }
+        // --- ライティング ---
+        const light = new THREE.DirectionalLight(0xffffff, 1);
+        light.position.set(5, 10, 7.5);
+        scene.add(light);
+        scene.add(new THREE.AmbientLight(0x404040));
 
-    // 壁
-    ctx.fillStyle = '#2d3741'; ctx.strokeStyle = '#ff4655'; ctx.lineWidth = 3;
-    walls.forEach(w => { ctx.fillRect(w.x, w.y, w.w, w.h); ctx.strokeRect(w.x, w.y, w.w, w.h); });
+        // --- 地面 (マップ) ---
+        const floor = new THREE.Mesh(
+            new THREE.PlaneGeometry(100, 100),
+            new THREE.MeshStandardMaterial({ color: 0x555555 })
+        );
+        floor.rotation.x = -Math.PI / 2;
+        scene.add(floor);
 
-    // エフェクト
-    particles.forEach((p, i) => {
-        p.x += p.vx; p.y += p.vy; p.life--;
-        ctx.fillStyle = p.color; ctx.fillRect(p.x, p.y, 4, 4);
-        if(p.life <= 0) particles.splice(i, 1);
-    });
+        // --- プレイヤーの制御 ---
+        camera.position.y = 1.6; // 目線の高さ
+        const move = { fwd: false, bwd: false, lft: false, rgt: false };
+        
+        document.addEventListener('keydown', (e) => {
+            if(e.code === 'KeyW') move.fwd = true;
+            if(e.code === 'KeyS') move.bwd = true;
+            if(e.code === 'KeyA') move.lft = true;
+            if(e.code === 'KeyD') move.rgt = true;
+        });
+        document.addEventListener('keyup', (e) => {
+            if(e.code === 'KeyW') move.fwd = false;
+            if(e.code === 'KeyS') move.bwd = false;
+            if(e.code === 'KeyA') move.lft = false;
+            if(e.code === 'KeyD') move.rgt = false;
+        });
 
-    // プレイヤー
-    if (player.hp > 0) {
-        ctx.save(); ctx.translate(player.x, player.y); ctx.rotate(player.ang);
-        ctx.fillStyle = '#00eeff'; ctx.beginPath(); ctx.arc(0, 0, player.r, 0, Math.PI*2); ctx.fill();
-        ctx.fillStyle = 'white'; ctx.fillRect(10, -3, 20, 6);
-        ctx.restore();
-    }
+        // マウスで視点移動 (Pointer Lock)
+        window.addEventListener('click', () => {
+            document.body.requestPointerLock();
+            document.getElementById('msg').style.display = 'none';
+        });
 
-    // BOT
-    bots.forEach(bot => {
-        if (bot.hp <= 0) return;
-        ctx.fillStyle = '#ff4655'; ctx.beginPath(); ctx.arc(bot.x, bot.y, bot.r, 0, Math.PI*2); ctx.fill();
-        const ang = Math.atan2(player.y-bot.y, player.x-bot.x);
-        ctx.save(); ctx.translate(bot.x, bot.y); ctx.rotate(ang);
-        ctx.fillStyle = 'black'; ctx.fillRect(10, -2, 15, 4); ctx.restore();
-    });
+        document.addEventListener('mousemove', (e) => {
+            if (document.pointerLockElement === document.body) {
+                camera.rotation.y -= e.movementX * 0.002;
+                camera.rotation.x -= e.movementY * 0.002;
+                camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, camera.rotation.x));
+            }
+        });
 
-    // 弾
-    ctx.fillStyle = '#fff200';
-    bullets.forEach(b => ctx.fillRect(b.x-2, b.y-2, 4, 4));
-}
+        // --- Botの作成機能 ---
+        function spawnBot() {
+            const geometry = new THREE.CapsuleGeometry(0.4, 1, 4, 8);
+            const material = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+            const bot = new THREE.Mesh(geometry, material);
+            
+            bot.position.set(
+                (Math.random() - 0.5) * 40,
+                1,
+                (Math.random() - 0.5) * 40
+            );
+            scene.add(bot);
+            bots.push(bot);
+        }
 
-function loop() { update(); draw(); requestAnimationFrame(loop); }
-loop();
-</script>
+        for(let i=0; i<5; i++) spawnBot();
+
+        // --- 射撃システム ---
+        const raycaster = new THREE.Raycaster();
+        window.addEventListener('mousedown', () => {
+            if (document.pointerLockElement !== document.body) return;
+
+            // 画面中央からレイを飛ばす
+            raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+            const intersects = raycaster.intersectObjects(bots);
+
+            if (intersects.length > 0) {
+                const target = intersects[0].object;
+                scene.remove(target);
+                bots.splice(bots.indexOf(target), 1);
+                kills++;
+                document.getElementById('kills').innerText = kills;
+                spawnBot(); // 倒したら新しいBotを出す
+            }
+        });
+
+        // --- ゲームループ ---
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+            const speed = 5 * delta;
+
+            if (move.fwd) camera.translateZ(-speed);
+            if (move.bwd) camera.translateZ(speed);
+            if (move.lft) camera.translateX(-speed);
+            if (move.rgt) camera.translateX(speed);
+            camera.position.y = 1.6; // 高さを固定
+
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // 画面リサイズ対応
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
 </body>
 </html>
