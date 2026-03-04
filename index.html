@@ -3,67 +3,55 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Modern Heli Strike</title>
+    <title>Heli Strike: Dawn Ops</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #000; touch-action: none; font-family: 'Segoe UI', sans-serif; }
-        
-        /* 洗練されたHUD UI */
+        body { margin: 0; overflow: hidden; background: #050a15; touch-action: none; font-family: 'Orbitron', sans-serif; }
         #hud {
             position: absolute; top: 30px; left: 30px; color: #00ffff;
-            pointer-events: none; z-index: 10; letter-spacing: 2px;
-            text-shadow: 0 0 10px rgba(0,255,255,0.7);
+            pointer-events: none; z-index: 10; text-shadow: 0 0 8px rgba(0,255,255,0.8);
         }
-        .stat-bar { width: 200px; height: 6px; background: rgba(0,255,255,0.2); border: 1px solid #00ffff; margin-top: 5px; }
-        #hp-fill { width: 100%; height: 100%; background: #00ffff; transition: width 0.3s; }
+        .bar { width: 180px; height: 4px; background: rgba(0,255,255,0.2); border: 1px solid #00ffff; margin: 5px 0; }
+        #hp-bar { width: 100%; height: 100%; background: #00ffff; }
+        
+        #target-info { position: absolute; top: 30px; right: 30px; color: #ff4444; text-align: right; display: none; }
 
-        /* ジョイスティック（透過デザイン） */
         #move-joy { 
-            position: absolute; bottom: 60px; left: 60px; 
-            width: 140px; height: 140px; background: rgba(255,255,255,0.03); 
-            border: 1px solid rgba(0,255,255,0.3); border-radius: 50%; 
+            position: absolute; bottom: 60px; left: 60px; width: 140px; height: 140px; 
+            border: 2px solid rgba(0,255,255,0.3); border-radius: 50%; 
         }
         #move-knob { 
-            position: absolute; top: 40px; left: 40px; 
-            width: 60px; height: 60px; background: rgba(0,255,255,0.15); 
-            border: 1px solid #00ffff; border-radius: 50%; 
+            position: absolute; top: 40px; left: 40px; width: 60px; height: 60px; 
+            background: rgba(0,255,255,0.2); border: 2px solid #00ffff; border-radius: 50%; 
         }
         
-        /* 射撃ボタン（タクティカルデザイン） */
         #fire-btn { 
-            position: absolute; bottom: 60px; right: 60px; 
-            width: 120px; height: 120px; background: rgba(255,0,0,0.1);
-            border: 2px solid rgba(255,0,0,0.5); border-radius: 50%; 
-            color: #ff4444; display: flex; align-items: center; justify-content: center;
-            font-weight: 900; letter-spacing: 2px; z-index: 20;
+            position: absolute; bottom: 60px; right: 60px; width: 120px; height: 120px; 
+            background: rgba(255,0,0,0.15); border: 3px solid #ff4444; border-radius: 50%; 
+            color: #fff; display: flex; align-items: center; justify-content: center; font-weight: bold;
         }
 
-        /* 照準器 */
         #crosshair {
-            position: absolute; top: 50%; left: 50%; width: 50px; height: 50px;
-            transform: translate(-50%, -50%); pointer-events: none;
+            position: absolute; top: 50%; left: 50%; width: 40px; height: 40px;
+            transform: translate(-50%, -50%); border: 1px solid rgba(0,255,255,0.5); border-radius: 50%;
         }
-        .ch-line { position: absolute; background: #00ffff; opacity: 0.7; }
-        .v { left: 24px; top: 0; width: 2px; height: 15px; }
-        .h { top: 24px; left: 0; width: 15px; height: 2px; }
-        .v-b { left: 24px; bottom: 0; width: 2px; height: 15px; }
-        .h-r { top: 24px; right: 0; width: 15px; height: 2px; }
     </style>
 </head>
 <body>
 
     <div id="hud">
-        <div style="font-size: 12px;">TACTICAL HUD v3.0</div>
-        <div style="font-size: 20px; margin-top: 10px;">INTEGRITY</div>
-        <div class="stat-bar"><div id="hp-fill"></div></div>
+        STATUS: OPERATIONAL<br>
+        <div class="bar"><div id="hp-bar"></div></div>
+        SIGNAL: STABLE
     </div>
 
-    <div id="crosshair">
-        <div class="ch-line v"></div><div class="ch-line h"></div>
-        <div class="ch-line v-b"></div><div class="ch-line h-r"></div>
+    <div id="target-info">
+        WARNING: BOGEY IDENTIFIED<br>
+        DISTANCE: <span id="dist">0</span>m
     </div>
 
+    <div id="crosshair"></div>
     <div id="move-joy"><div id="move-knob"></div></div>
-    <div id="fire-btn">ENGAGE</div>
+    <div id="fire-btn">FIRE</div>
 
     <script type="importmap">
         { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
@@ -72,103 +60,90 @@
     <script type="module">
         import * as THREE from 'three';
 
-        // --- シーン・グラフィック強化 ---
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x020308);
-        scene.fog = new THREE.FogExp2(0x020308, 0.02); // 奥行きのある霧
+        scene.background = new THREE.Color(0x0a1a33); // 夜明け前の空
+        scene.fog = new THREE.Fog(0x0a1a33, 20, 100);
 
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setPixelRatio(window.devicePixelRatio);
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
 
-        // ブルーム（光り輝く感じ）を出すためのライティング
-        const ambient = new THREE.AmbientLight(0x404040, 2);
-        scene.add(ambient);
-        const sun = new THREE.DirectionalLight(0x00ffff, 0.5);
-        sun.position.set(10, 50, 10);
+        // ライティング強化
+        scene.add(new THREE.AmbientLight(0x444466, 1));
+        const sun = new THREE.DirectionalLight(0xffaa88, 1.5); // 朝日の光
+        sun.position.set(-50, 20, -50);
         scene.add(sun);
 
-        // --- リアルな地面（グリッドを少し暗めに） ---
-        const groundGeo = new THREE.PlaneGeometry(200, 200);
-        const groundMat = new THREE.MeshStandardMaterial({ color: 0x050505, roughness: 0.8 });
-        const ground = new THREE.Mesh(groundGeo, groundMat);
-        ground.rotation.x = -Math.PI / 2;
+        // 地面
+        const ground = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.MeshStandardMaterial({ color: 0x111122 }));
+        ground.rotation.x = -Math.PI/2;
         scene.add(ground);
-        const grid = new THREE.GridHelper(200, 80, 0x00ffff, 0x051a1a);
-        grid.position.y = 0.01;
-        scene.add(grid);
+        scene.add(new THREE.GridHelper(200, 50, 0x114488, 0x050a15));
 
-        // --- 遮蔽物（コンクリート風） ---
+        // 遮蔽物
         const walls = [];
-        function createBlock(x, z, w, h, d) {
-            const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshStandardMaterial({ color: 0x1a1a1a, metalness: 0.5 }));
-            mesh.position.set(x, h/2, z);
-            scene.add(mesh);
-            walls.push(new THREE.Box3().setFromObject(mesh));
-        }
-        createBlock(10, -15, 8, 5, 8);
-        createBlock(-12, -25, 10, 8, 5);
+        const wallMat = new THREE.MeshStandardMaterial({color: 0x222233});
+        [[10, -10], [-15, -20], [0, -35]].forEach(p => {
+            const m = new THREE.Mesh(new THREE.BoxGeometry(8, 6, 8), wallMat);
+            m.position.set(p[0], 3, p[1]);
+            scene.add(m);
+            walls.push(new THREE.Box3().setFromObject(m));
+        });
 
-        // --- 敵ヘリのモデル強化 ---
+        // 敵ヘリ (発光パーツ追加)
         let heli = { mesh: new THREE.Group(), hp: 100, lastShot: 0 };
-        const hBody = new THREE.Mesh(new THREE.BoxGeometry(4, 1.2, 5), new THREE.MeshStandardMaterial({color: 0x111111, roughness: 0.1}));
+        const hBody = new THREE.Mesh(new THREE.BoxGeometry(4, 1.5, 6), new THREE.MeshStandardMaterial({color: 0x111111}));
         heli.mesh.add(hBody);
-        const rotor = new THREE.Mesh(new THREE.BoxGeometry(12, 0.05, 0.4), new THREE.MeshStandardMaterial({color: 0x000000}));
+        
+        // 警告灯（赤く光る）
+        const lightGeo = new THREE.SphereGeometry(0.3);
+        const redMat = new THREE.MeshBasicMaterial({color: 0xff0000});
+        const beacon = new THREE.Mesh(lightGeo, redMat);
+        beacon.position.set(0, -0.7, 0);
+        heli.mesh.add(beacon);
+
+        // プロペラ
+        const rotor = new THREE.Mesh(new THREE.BoxGeometry(12, 0.05, 0.5), new THREE.MeshStandardMaterial({color: 0x000000}));
         rotor.position.y = 1; heli.mesh.add(rotor);
         scene.add(heli.mesh);
 
-        // --- 操作・エフェクト ---
+        // 操作系
         let yaw = 0, pitch = 0, targetYaw = 0, targetPitch = 0;
         let moveVec = { x: 0, y: 0 }, curMove = { x: 0, y: 0 };
-        let bullets = [], playerHP = 100, flashLight;
+        let bullets = [], playerHP = 100;
 
-        // マズルフラッシュ用の点光源
-        flashLight = new THREE.PointLight(0xffff00, 0, 10);
-        scene.add(flashLight);
-
-        // 視点移動
-        let touchId = null, lx, ly;
+        // タッチ操作
+        let tId = null, lx, ly;
         window.addEventListener('touchstart', e => {
-            for(let t of e.changedTouches) if(t.clientX > window.innerWidth/3 && t.target.id !== 'fire-btn') { touchId = t.identifier; lx = t.clientX; ly = t.clientY; }
+            for(let t of e.changedTouches) if(t.clientX > window.innerWidth/3 && t.target.id !== 'fire-btn') { tId = t.identifier; lx = t.clientX; ly = t.clientY; }
         });
         window.addEventListener('touchmove', e => {
-            for(let t of e.touches) if(t.identifier === touchId) {
-                targetYaw -= (t.clientX - lx) * 0.005;
-                targetPitch -= (t.clientY - ly) * 0.005;
+            for(let t of e.touches) if(t.identifier === tId) {
+                targetYaw -= (t.clientX - lx) * 0.005; targetPitch -= (t.clientY - ly) * 0.005;
                 targetPitch = Math.max(-1.4, Math.min(1.4, targetPitch));
                 lx = t.clientX; ly = t.clientY;
             }
         });
 
-        // 移動
         const joy = document.getElementById('move-joy');
         const knob = document.getElementById('move-knob');
         joy.addEventListener('touchmove', e => {
             const t = e.touches[0], r = joy.getBoundingClientRect();
             let dx = t.clientX - (r.left + 70), dy = t.clientY - (r.top + 70);
-            const dist = Math.min(Math.sqrt(dx*dx+dy*dy), 50);
-            const ang = Math.atan2(dy, dx);
-            moveVec.x = (Math.cos(ang)*dist)/50; moveVec.y = (Math.sin(ang)*dist)/50;
-            knob.style.transform = `translate(${Math.cos(ang)*dist}px, ${Math.sin(ang)*dist}px)`;
+            const d = Math.min(Math.sqrt(dx*dx+dy*dy), 50);
+            const a = Math.atan2(dy, dx);
+            moveVec.x = (Math.cos(a)*d)/50; moveVec.y = (Math.sin(a)*d)/50;
+            knob.style.transform = `translate(${Math.cos(a)*d}px, ${Math.sin(a)*d}px)`;
         });
         joy.addEventListener('touchend', () => { moveVec = {x:0, y:0}; knob.style.transform = 'translate(0,0)'; });
 
-        // 射撃演出
+        // 射撃
         document.getElementById('fire-btn').addEventListener('touchstart', e => {
             e.preventDefault();
-            // マズルフラッシュ
-            flashLight.power = 50;
-            flashLight.position.copy(camera.position).add(new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion));
-            setTimeout(() => flashLight.power = 0, 50);
-
-            const b = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 2), new THREE.MeshBasicMaterial({color: 0xffffaa}));
+            const b = new THREE.Mesh(new THREE.SphereGeometry(0.2), new THREE.MeshBasicMaterial({color: 0x00ffff}));
             b.position.copy(camera.position);
-            b.quaternion.copy(camera.quaternion);
-            b.rotateX(Math.PI/2);
-            const dir = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion);
-            b.userData.vel = dir.multiplyScalar(4); // 弾速アップ
+            b.userData.vel = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion).multiplyScalar(3);
             bullets.push(b); scene.add(b);
         });
 
@@ -181,21 +156,27 @@
             const op = camera.position.clone();
             const f = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion); f.y = 0; f.normalize();
             const r = new THREE.Vector3().crossVectors(f, new THREE.Vector3(0,1,0)).negate();
-            camera.position.addScaledVector(f, -curMove.y * 0.25);
-            camera.position.addScaledVector(r, -curMove.x * 0.25);
+            camera.position.addScaledVector(f, -curMove.y * 0.3);
+            camera.position.addScaledVector(r, -curMove.x * 0.3);
             walls.forEach(w => { if(w.containsPoint(camera.position)) camera.position.copy(op); });
 
-            // 敵の挙動
-            heli.mesh.position.set(Math.sin(Date.now()*0.0005)*40, 18, Math.cos(Date.now()*0.0007)*30 - 20);
+            // 敵ヘリ移動と視認性UP
+            const time = Date.now() * 0.001;
+            heli.mesh.position.set(Math.sin(time*0.5)*40, 15 + Math.sin(time)*5, Math.cos(time*0.5)*40 - 20);
             heli.mesh.lookAt(camera.position);
             rotor.rotation.y += 0.8;
+            beacon.material.opacity = (Math.sin(time*10) + 1) / 2; // 点滅
+
+            // 敵情報の更新
+            const dist = Math.floor(camera.position.distanceTo(heli.mesh.position));
+            document.getElementById('dist').innerText = dist;
+            document.getElementById('target-info').style.display = 'block';
 
             bullets.forEach((b, i) => {
                 b.position.add(b.userData.vel);
-                if(b.position.distanceTo(heli.mesh.position) < 3.5) {
-                    heli.hp -= 5; scene.remove(b); bullets.splice(i, 1);
+                if(b.position.distanceTo(heli.mesh.position) < 4) {
+                    heli.hp -= 10; scene.remove(b); bullets.splice(i, 1);
                 }
-                if(b.position.length() > 200) { scene.remove(b); bullets.splice(i, 1); }
             });
 
             renderer.render(scene, camera);
