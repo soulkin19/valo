@@ -3,52 +3,41 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Heli Strike: Dawn Ops</title>
+    <title>Stinger Ops: Advanced AI</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #050a15; touch-action: none; font-family: 'Orbitron', sans-serif; }
-        #hud {
-            position: absolute; top: 30px; left: 30px; color: #00ffff;
-            pointer-events: none; z-index: 10; text-shadow: 0 0 8px rgba(0,255,255,0.8);
-        }
-        .bar { width: 180px; height: 4px; background: rgba(0,255,255,0.2); border: 1px solid #00ffff; margin: 5px 0; }
-        #hp-bar { width: 100%; height: 100%; background: #00ffff; }
+        body { margin: 0; overflow: hidden; background: #000; touch-action: none; font-family: sans-serif; }
+        #hud { position: absolute; top: 20px; left: 20px; color: #00ffff; pointer-events: none; display: none; }
         
-        #target-info { position: absolute; top: 30px; right: 30px; color: #ff4444; text-align: right; display: none; }
+        /* 武器選択画面 */
+        #menu {
+            position: absolute; width: 100%; height: 100%; background: rgba(0,0,0,0.9);
+            display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100;
+        }
+        .btn {
+            width: 250px; padding: 20px; margin: 10px; border: 2px solid #00ffff;
+            color: #00ffff; text-align: center; font-weight: bold; font-size: 20px;
+        }
 
-        #move-joy { 
-            position: absolute; bottom: 60px; left: 60px; width: 140px; height: 140px; 
-            border: 2px solid rgba(0,255,255,0.3); border-radius: 50%; 
-        }
-        #move-knob { 
-            position: absolute; top: 40px; left: 40px; width: 60px; height: 60px; 
-            background: rgba(0,255,255,0.2); border: 2px solid #00ffff; border-radius: 50%; 
-        }
-        
+        /* UI */
+        #move-joy { position: absolute; bottom: 40px; left: 40px; width: 140px; height: 140px; border: 2px solid rgba(0,255,255,0.3); border-radius: 50%; display: none; }
+        #move-knob { position: absolute; top: 40px; left: 40px; width: 60px; height: 60px; background: #00ffff; border-radius: 50%; opacity: 0.3; }
         #fire-btn { 
-            position: absolute; bottom: 60px; right: 60px; width: 120px; height: 120px; 
-            background: rgba(255,0,0,0.15); border: 3px solid #ff4444; border-radius: 50%; 
-            color: #fff; display: flex; align-items: center; justify-content: center; font-weight: bold;
+            position: absolute; bottom: 40px; right: 40px; width: 120px; height: 120px; 
+            background: rgba(255,0,0,0.4); border: 4px solid #fff; border-radius: 50%; 
+            display: none; align-items: center; justify-content: center; color: #fff; font-weight: bold;
         }
-
-        #crosshair {
-            position: absolute; top: 50%; left: 50%; width: 40px; height: 40px;
-            transform: translate(-50%, -50%); border: 1px solid rgba(0,255,255,0.5); border-radius: 50%;
-        }
+        #crosshair { position: absolute; top: 50%; left: 50%; width: 40px; height: 40px; border: 1px solid #00ffff; transform: translate(-50%, -50%); border-radius: 50%; pointer-events: none; }
     </style>
 </head>
 <body>
 
-    <div id="hud">
-        STATUS: OPERATIONAL<br>
-        <div class="bar"><div id="hp-bar"></div></div>
-        SIGNAL: STABLE
+    <div id="menu">
+        <h2 style="color:#fff;">SELECT WEAPON</h2>
+        <div class="btn" onclick="startGame('mg')">20mm MACHINE GUN</div>
+        <div class="btn" onclick="startGame('stinger')">FIM-92 STINGER</div>
     </div>
 
-    <div id="target-info">
-        WARNING: BOGEY IDENTIFIED<br>
-        DISTANCE: <span id="dist">0</span>m
-    </div>
-
+    <div id="hud">HP: <span id="hp">100</span> | WEAPON: <span id="w-name">-</span></div>
     <div id="crosshair"></div>
     <div id="move-joy"><div id="move-knob"></div></div>
     <div id="fire-btn">FIRE</div>
@@ -61,121 +50,130 @@
         import * as THREE from 'three';
 
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x0a1a33); // 夜明け前の空
-        scene.fog = new THREE.Fog(0x0a1a33, 20, 100);
-
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        scene.background = new THREE.Color(0x050a15);
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
 
-        // ライティング強化
-        scene.add(new THREE.AmbientLight(0x444466, 1));
-        const sun = new THREE.DirectionalLight(0xffaa88, 1.5); // 朝日の光
-        sun.position.set(-50, 20, -50);
+        scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+        const sun = new THREE.DirectionalLight(0xaaaaff, 1);
+        sun.position.set(10, 50, 10);
         scene.add(sun);
+        scene.add(new THREE.GridHelper(200, 40, 0x00ffff, 0x111111));
 
-        // 地面
-        const ground = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.MeshStandardMaterial({ color: 0x111122 }));
-        ground.rotation.x = -Math.PI/2;
-        scene.add(ground);
-        scene.add(new THREE.GridHelper(200, 50, 0x114488, 0x050a15));
+        let selectedWeapon = '';
+        let isPlaying = false;
+        let playerHP = 100;
+        let bullets = [], enemyBullets = [];
+        let yaw = 0, pitch = 0, moveVec = {x:0, y:0};
+        let heli = { mesh: new THREE.Group(), hp: 100, lastMG: 0, lastRocket: 0 };
 
-        // 遮蔽物
-        const walls = [];
-        const wallMat = new THREE.MeshStandardMaterial({color: 0x222233});
-        [[10, -10], [-15, -20], [0, -35]].forEach(p => {
-            const m = new THREE.Mesh(new THREE.BoxGeometry(8, 6, 8), wallMat);
-            m.position.set(p[0], 3, p[1]);
-            scene.add(m);
-            walls.push(new THREE.Box3().setFromObject(m));
-        });
-
-        // 敵ヘリ (発光パーツ追加)
-        let heli = { mesh: new THREE.Group(), hp: 100, lastShot: 0 };
-        const hBody = new THREE.Mesh(new THREE.BoxGeometry(4, 1.5, 6), new THREE.MeshStandardMaterial({color: 0x111111}));
-        heli.mesh.add(hBody);
-        
-        // 警告灯（赤く光る）
-        const lightGeo = new THREE.SphereGeometry(0.3);
-        const redMat = new THREE.MeshBasicMaterial({color: 0xff0000});
-        const beacon = new THREE.Mesh(lightGeo, redMat);
-        beacon.position.set(0, -0.7, 0);
-        heli.mesh.add(beacon);
-
-        // プロペラ
-        const rotor = new THREE.Mesh(new THREE.BoxGeometry(12, 0.05, 0.5), new THREE.MeshStandardMaterial({color: 0x000000}));
-        rotor.position.y = 1; heli.mesh.add(rotor);
+        // 敵ヘリ構築
+        const body = new THREE.Mesh(new THREE.BoxGeometry(4, 1.2, 6), new THREE.MeshStandardMaterial({color: 0x111111}));
+        heli.mesh.add(body);
+        const rotor = new THREE.Mesh(new THREE.BoxGeometry(10, 0.1, 0.5), new THREE.MeshBasicMaterial({color: 0x000000}));
+        rotor.position.y = 1;
+        heli.mesh.add(rotor);
         scene.add(heli.mesh);
 
-        // 操作系
-        let yaw = 0, pitch = 0, targetYaw = 0, targetPitch = 0;
-        let moveVec = { x: 0, y: 0 }, curMove = { x: 0, y: 0 };
-        let bullets = [], playerHP = 100;
+        window.startGame = (type) => {
+            selectedWeapon = type;
+            isPlaying = true;
+            document.getElementById('menu').style.display = 'none';
+            document.getElementById('hud').style.display = 'block';
+            document.getElementById('move-joy').style.display = 'block';
+            document.getElementById('fire-btn').style.display = 'flex';
+            document.getElementById('w-name').innerText = type.toUpperCase();
+            camera.position.set(0, 1.6, 10);
+        };
 
-        // タッチ操作
+        // タッチ制御
         let tId = null, lx, ly;
         window.addEventListener('touchstart', e => {
             for(let t of e.changedTouches) if(t.clientX > window.innerWidth/3 && t.target.id !== 'fire-btn') { tId = t.identifier; lx = t.clientX; ly = t.clientY; }
         });
         window.addEventListener('touchmove', e => {
             for(let t of e.touches) if(t.identifier === tId) {
-                targetYaw -= (t.clientX - lx) * 0.005; targetPitch -= (t.clientY - ly) * 0.005;
-                targetPitch = Math.max(-1.4, Math.min(1.4, targetPitch));
+                yaw -= (t.clientX - lx) * 0.006; pitch -= (t.clientY - ly) * 0.006;
                 lx = t.clientX; ly = t.clientY;
             }
         });
 
         const joy = document.getElementById('move-joy');
-        const knob = document.getElementById('move-knob');
         joy.addEventListener('touchmove', e => {
             const t = e.touches[0], r = joy.getBoundingClientRect();
             let dx = t.clientX - (r.left + 70), dy = t.clientY - (r.top + 70);
             const d = Math.min(Math.sqrt(dx*dx+dy*dy), 50);
             const a = Math.atan2(dy, dx);
             moveVec.x = (Math.cos(a)*d)/50; moveVec.y = (Math.sin(a)*d)/50;
-            knob.style.transform = `translate(${Math.cos(a)*d}px, ${Math.sin(a)*d}px)`;
+            document.getElementById('move-knob').style.transform = `translate(${Math.cos(a)*d}px, ${Math.sin(a)*d}px)`;
         });
-        joy.addEventListener('touchend', () => { moveVec = {x:0, y:0}; knob.style.transform = 'translate(0,0)'; });
+        joy.addEventListener('touchend', () => { moveVec = {x:0, y:0}; document.getElementById('move-knob').style.transform = 'translate(0,0)'; });
 
         // 射撃
         document.getElementById('fire-btn').addEventListener('touchstart', e => {
             e.preventDefault();
-            const b = new THREE.Mesh(new THREE.SphereGeometry(0.2), new THREE.MeshBasicMaterial({color: 0x00ffff}));
+            const b = new THREE.Mesh(new THREE.SphereGeometry(selectedWeapon === 'stinger' ? 0.3 : 0.15), new THREE.MeshBasicMaterial({color: 0xffff00}));
             b.position.copy(camera.position);
-            b.userData.vel = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion).multiplyScalar(3);
+            b.userData.type = selectedWeapon;
+            b.userData.vel = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion).multiplyScalar(selectedWeapon === 'stinger' ? 0.8 : 3);
             bullets.push(b); scene.add(b);
         });
 
         function animate() {
             requestAnimationFrame(animate);
-            yaw += (targetYaw - yaw) * 0.1; pitch += (targetPitch - pitch) * 0.1;
-            camera.quaternion.setFromEuler(new THREE.Euler(pitch, yaw, 0, 'YXZ'));
-            
-            curMove.x += (moveVec.x - curMove.x) * 0.1; curMove.y += (moveVec.y - curMove.y) * 0.1;
-            const op = camera.position.clone();
-            const f = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion); f.y = 0; f.normalize();
-            const r = new THREE.Vector3().crossVectors(f, new THREE.Vector3(0,1,0)).negate();
-            camera.position.addScaledVector(f, -curMove.y * 0.3);
-            camera.position.addScaledVector(r, -curMove.x * 0.3);
-            walls.forEach(w => { if(w.containsPoint(camera.position)) camera.position.copy(op); });
+            if(!isPlaying) return;
 
-            // 敵ヘリ移動と視認性UP
-            const time = Date.now() * 0.001;
-            heli.mesh.position.set(Math.sin(time*0.5)*40, 15 + Math.sin(time)*5, Math.cos(time*0.5)*40 - 20);
+            camera.quaternion.setFromEuler(new THREE.Euler(pitch, yaw, 0, 'YXZ'));
+            const f = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion); f.y = 0;
+            camera.position.addScaledVector(f.normalize(), -moveVec.y * 0.25);
+
+            // 敵ヘリのAI
+            const t = Date.now() * 0.001;
+            heli.mesh.position.set(Math.sin(t*0.4)*35, 12 + Math.sin(t)*3, Math.cos(t*0.4)*35 - 15);
             heli.mesh.lookAt(camera.position);
             rotor.rotation.y += 0.8;
-            beacon.material.opacity = (Math.sin(time*10) + 1) / 2; // 点滅
 
-            // 敵情報の更新
-            const dist = Math.floor(camera.position.distanceTo(heli.mesh.position));
-            document.getElementById('dist').innerText = dist;
-            document.getElementById('target-info').style.display = 'block';
+            // 敵の攻撃パターン
+            if(Date.now() - heli.lastMG > 150) { // 20mm機銃
+                if(Math.random() > 0.9) {
+                    const eb = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.5), new THREE.MeshBasicMaterial({color: 0xff0000}));
+                    eb.position.copy(heli.mesh.position);
+                    eb.lookAt(camera.position);
+                    eb.userData.vel = new THREE.Vector3().subVectors(camera.position, heli.mesh.position).normalize().multiplyScalar(1.2);
+                    enemyBullets.push(eb); scene.add(eb);
+                    heli.lastMG = Date.now();
+                }
+            }
+            if(Date.now() - heli.lastRocket > 3000) { // ロケット
+                const eb = new THREE.Mesh(new THREE.SphereGeometry(0.5), new THREE.MeshBasicMaterial({color: 0xffaa00}));
+                eb.position.copy(heli.mesh.position);
+                eb.userData.vel = new THREE.Vector3().subVectors(camera.position, heli.mesh.position).normalize().multiplyScalar(0.5);
+                eb.userData.isRocket = true;
+                enemyBullets.push(eb); scene.add(eb);
+                heli.lastRocket = Date.now();
+            }
 
+            // 弾丸処理
             bullets.forEach((b, i) => {
+                if(b.userData.type === 'stinger') {
+                    const dir = new THREE.Vector3().subVectors(heli.mesh.position, b.position).normalize();
+                    b.userData.vel.lerp(dir.multiplyScalar(1.5), 0.04);
+                }
                 b.position.add(b.userData.vel);
                 if(b.position.distanceTo(heli.mesh.position) < 4) {
-                    heli.hp -= 10; scene.remove(b); bullets.splice(i, 1);
+                    heli.hp -= 20; scene.remove(b); bullets.splice(i, 1);
+                    if(heli.hp <= 0) { /* 撃墜演出省略 */ heli.hp = 100; }
+                }
+            });
+
+            enemyBullets.forEach((eb, i) => {
+                eb.position.add(eb.userData.vel);
+                if(eb.position.distanceTo(camera.position) < 1.5) {
+                    playerHP -= eb.userData.isRocket ? 20 : 2;
+                    document.getElementById('hp').innerText = playerHP;
+                    scene.remove(eb); enemyBullets.splice(i, 1);
                 }
             });
 
