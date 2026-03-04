@@ -3,71 +3,47 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Real Ops PvE FPS</title>
+    <title>Tactical Ops: M16/VAL/S12K</title>
     <style>
-        body { margin: 0; overflow: hidden; font-family: 'Courier New', monospace; background: #111; touch-action: none; }
+        body { margin: 0; overflow: hidden; font-family: 'Courier New', monospace; background: #222; touch-action: none; }
         canvas { display: block; }
 
-        /* カスタムメニュー（より軍事的なUIへ） */
+        /* UI */
         #menu {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.9); display: flex; flex-direction: column;
-            align-items: center; justify-content: center; color: #eee; z-index: 10;
-            border: 10px solid #333; box-sizing: border-box;
+            background: rgba(20,20,20,0.95); display: flex; flex-direction: column;
+            align-items: center; justify-content: center; color: #fff; z-index: 20;
         }
-        .config-group { margin: 10px; width: 300px; border-left: 4px solid #f00; padding-left: 15px; background: rgba(255,255,255,0.05); }
-        select, input { width: 100%; background: #222; color: #fff; border: 1px solid #444; padding: 5px; }
-        #start-btn {
-            margin-top: 30px; padding: 15px 60px; font-size: 24px; background: #900; color: white;
-            border: none; cursor: pointer; clip-path: polygon(10% 0, 100% 0, 90% 100%, 0 100%);
-        }
+        .config-group { margin: 15px; width: 320px; padding: 10px; border: 1px solid #444; background: #111; }
+        select { width: 100%; padding: 10px; background: #333; color: #fff; border: none; font-size: 16px; }
+        #start-btn { margin-top: 20px; padding: 15px 50px; background: #0066ff; color: #fff; border: none; cursor: pointer; font-weight: bold; }
 
-        /* UI要素 */
-        #ui { position: absolute; top: 30px; left: 30px; color: #f00; font-weight: bold; font-size: 20px; text-transform: uppercase; }
-        #crosshair { 
-            position: absolute; top: 50%; left: 50%; width: 30px; height: 30px; 
-            transform: translate(-50%, -50%); pointer-events: none; 
-        }
-        #crosshair:before, #crosshair:after {
-            content: ''; position: absolute; background: rgba(255,0,0,0.8);
-        }
-        #crosshair:before { top: 50%; left: 0; width: 100%; height: 2px; }
-        #crosshair:after { left: 50%; top: 0; width: 2px; height: 100%; }
-
-        /* ジョイスティック（元の仕様に準拠） */
-        #joystick-container { position: absolute; bottom: 50px; left: 50px; width: 120px; height: 120px; background: rgba(255,255,255,0.1); border-radius: 50%; border: 2px solid #555; }
-        #joystick-knob { position: absolute; top: 35px; left: 35px; width: 50px; height: 50px; background: #777; border-radius: 50%; box-shadow: inset 0 0 10px #000; }
+        #ui { position: absolute; top: 20px; left: 20px; color: #0f0; font-size: 18px; text-shadow: 2px 2px #000; pointer-events: none; }
+        #crosshair { position: absolute; top: 50%; left: 50%; width: 24px; height: 24px; border: 1px solid #0f0; transform: translate(-50%, -50%); pointer-events: none; }
         
-        #fire-button { 
-            position: absolute; bottom: 50px; right: 50px; width: 90px; height: 90px; 
-            background: radial-gradient(#f00, #500); border-radius: 50%; border: 4px solid #222;
-            color: white; font-weight: bold; display: flex; align-items: center; justify-content: center;
-        }
+        /* Joystick */
+        #joystick-container { position: absolute; bottom: 40px; left: 40px; width: 120px; height: 120px; background: rgba(255,255,255,0.1); border-radius: 50%; border: 2px solid #666; }
+        #joystick-knob { position: absolute; top: 35px; left: 35px; width: 50px; height: 50px; background: #999; border-radius: 50%; }
+        
+        #fire-button { position: absolute; bottom: 40px; right: 40px; width: 100px; height: 100px; background: #aa0000; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; border: 5px solid #333; }
     </style>
 </head>
 <body>
 
 <div id="menu">
-    <h1 style="color:#f00; text-shadow: 2px 2px #000;">ARMORY & DEPLOYMENT</h1>
+    <h1>SELECT WEAPON</h1>
     <div class="config-group">
-        <label>WEAPON PLATFORM</label>
+        <label>FIREARM PLATFORM</label>
         <select id="gun-type">
-            <option value="pistol">M9 BLASTER (Semi/Auto)</option>
-            <option value="sniper">SR-2000 (High Velocity)</option>
+            <option value="m16">M16 (3-Round Burst)</option>
+            <option value="asval">AS VAL (972 RPM Full-Auto)</option>
+            <option value="s12k">S12K (Semi-Auto Shotgun)</option>
         </select>
     </div>
-    <div class="config-group">
-        <label>MUZZLE VELOCITY (FPS)</label>
-        <input type="range" id="muzzle-speed" min="1.0" max="3.0" step="0.1" value="1.5">
-    </div>
-    <div class="config-group">
-        <label>CYCLIC RATE</label>
-        <input type="range" id="fire-rate" min="200" max="1000" step="100" value="700">
-    </div>
-    <button id="start-btn">DEPLOY NOW</button>
+    <button id="start-btn">DEPLOY</button>
 </div>
 
-<div id="ui">STATUS: OPERATIONAL / SCORE: <span id="score">0</span></div>
+<div id="ui">SCORE: <span id="score">0</span> | WEAPON: <span id="w-name">-</span></div>
 <div id="crosshair"></div>
 <div id="joystick-container"><div id="joystick-knob"></div></div>
 <div id="fire-button">FIRE</div>
@@ -79,150 +55,193 @@
 <script type="module">
     import * as THREE from 'three';
 
-    let gunConfig = { speed: 1.5, interval: 150, type: 'pistol' };
+    // --- ゲーム設定 ---
+    let selectedGun = "m16";
     let isPlaying = false, isFiring = false;
-    const FIELD_SIZE = 80;
+    const FIELD_SIZE = 60;
+    let score = 0, lastFireTime = 0;
 
+    // --- シーン・カメラ・レンダラー ---
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x111111);
-    scene.fog = new THREE.Fog(0x111111, 10, 50);
-
-    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    scene.background = new THREE.Color(0x444444); // 背景を明るいグレーに
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     document.body.appendChild(renderer.domElement);
 
-    // --- 実銃（モデル構築） ---
-    const gunGroup = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.3, 0.8), new THREE.MeshStandardMaterial({color: 0x222222}));
-    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1), new THREE.MeshStandardMaterial({color: 0x111111}));
-    barrel.rotation.x = Math.PI / 2;
-    barrel.position.z = -0.6;
-    const grip = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.4, 0.2), new THREE.MeshStandardMaterial({color: 0x332211}));
-    grip.position.set(0, -0.3, 0.1);
-    gunGroup.add(body, barrel, grip);
-    scene.add(gunGroup);
+    // --- 明るいライティング ---
+    const ambient = new THREE.AmbientLight(0xffffff, 0.8); // 全体を明るく
+    scene.add(ambient);
+    const sun = new THREE.DirectionalLight(0xffffff, 1.2);
+    sun.position.set(10, 20, 10);
+    scene.add(sun);
 
-    // --- 地面 & ライティング ---
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(FIELD_SIZE, FIELD_SIZE), new THREE.MeshStandardMaterial({color: 0x222222, roughness: 0.8}));
-    floor.rotation.x = -Math.PI / 2;
+    // --- フィールド & 障害物 ---
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(FIELD_SIZE, FIELD_SIZE), new THREE.MeshStandardMaterial({color: 0x666666}));
+    floor.rotation.x = -Math.PI/2;
     scene.add(floor);
-    scene.add(new THREE.AmbientLight(0xffffff, 0.5));
-    const spotLight = new THREE.SpotLight(0xff0000, 50);
-    spotLight.position.set(0, 20, 0);
-    scene.add(spotLight);
 
-    // 遮蔽物（コンテナ風）
     const obstacles = [];
-    for(let i=0; i<30; i++) {
-        const obs = new THREE.Mesh(new THREE.BoxGeometry(3, 3, 6), new THREE.MeshStandardMaterial({color: 0x444444}));
-        obs.position.set((Math.random()-0.5)*60, 1.5, (Math.random()-0.5)*60);
-        scene.add(obs);
-        obstacles.push(obs);
+    const obsGeo = new THREE.BoxGeometry(4, 4, 4);
+    const obsMat = new THREE.MeshStandardMaterial({color: 0x222222});
+    for(let i=0; i<15; i++) {
+        const box = new THREE.Mesh(obsGeo, obsMat);
+        box.position.set((Math.random()-0.5)*50, 2, (Math.random()-0.5)*50);
+        scene.add(box);
+        obstacles.push(box);
     }
 
-    // --- ロジック変数 ---
-    let enemies = [], bullets = [], score = 0, lastFireTime = 0;
-    let yaw = 0, pitch = 0, moveF = 0, moveR = 0;
-    let recoilAmt = 0;
+    // --- 銃の見た目 ---
+    const gunGroup = new THREE.Group();
+    const gunBody = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.2, 0.8), new THREE.MeshStandardMaterial({color: 0x111111}));
+    gunGroup.add(gunBody);
+    scene.add(gunGroup);
 
+    // --- 変数 ---
+    let enemies = [], bullets = [], yaw = 0, pitch = 0, moveF = 0, moveR = 0, recoil = 0;
+
+    // --- スタート処理 ---
     document.getElementById('start-btn').onclick = () => {
-        gunConfig.speed = parseFloat(document.getElementById('muzzle-speed').value);
-        gunConfig.interval = 1100 - parseInt(document.getElementById('fire-rate').value);
+        selectedGun = document.getElementById('gun-type').value;
+        document.getElementById('w-name').innerText = selectedGun.toUpperCase();
         document.getElementById('menu').style.display = 'none';
         isPlaying = true;
     };
 
-    function fire() {
+    // --- 射撃ロジック (M16 / AS VAL / S12K) ---
+    async function fire() {
         const now = Date.now();
-        if(now - lastFireTime < gunConfig.interval) return;
         
-        const b = new THREE.Mesh(new THREE.SphereGeometry(0.1), new THREE.MeshBasicMaterial({color: 0xffaa00}));
-        b.position.copy(camera.position).add(new THREE.Vector3(0.2, -0.2, -0.5).applyQuaternion(camera.quaternion));
-        const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
-        b.velocity = dir.multiplyScalar(gunConfig.speed);
-        bullets.push(b);
-        scene.add(b);
-        
-        recoilAmt = 0.15; // 射撃時の反動
-        lastFireTime = now;
+        if (selectedGun === "asval") {
+            const interval = 1000 / (972 / 60); // 972 RPM = 約61ms
+            if (now - lastFireTime < interval) return;
+            spawnBullet();
+            recoil = 0.05;
+        } 
+        else if (selectedGun === "m16") {
+            if (now - lastFireTime < 600) return; // バースト間のディレイ
+            for(let i=0; i<3; i++) {
+                spawnBullet();
+                recoil += 0.04;
+                await new Promise(r => setTimeout(r, 80)); // 3点バーストの間隔
+            }
+        } 
+        else if (selectedGun === "s12k") {
+            if (now - lastFireTime < 400) return;
+            for(let i=0; i<8; i++) { // 散弾
+                spawnBullet(true);
+            }
+            recoil = 0.2;
+        }
+        lastFireTime = Date.now();
     }
 
-    // --- ジョイスティック制御（物理仕様） ---
-    const knob = document.getElementById('joystick-knob');
-    let moveTouchId = null;
+    function spawnBullet(isShotgun = false) {
+        const b = new THREE.Mesh(new THREE.SphereGeometry(0.08), new THREE.MeshBasicMaterial({color: 0xffff00}));
+        b.position.copy(camera.position).add(new THREE.Vector3(0.3, -0.2, -0.5).applyQuaternion(camera.quaternion));
+        const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+        
+        if(isShotgun) { // 散弾の広がり
+            dir.x += (Math.random()-0.5)*0.15;
+            dir.y += (Math.random()-0.5)*0.15;
+            b.life = 0.5; // S12Kは距離減衰（寿命）
+        } else {
+            b.life = 2.0;
+        }
 
-    window.addEventListener('touchstart', (e) => {
+        b.velocity = dir.normalize().multiplyScalar(1.8);
+        bullets.push(b);
+        scene.add(b);
+    }
+
+    // --- 操作設定 ---
+    const knob = document.getElementById('joystick-knob');
+    let moveTouchId = null, lastX, lastY;
+
+    window.addEventListener('touchstart', e => {
         for(let t of e.changedTouches) if(t.clientX < window.innerWidth/2) moveTouchId = t.identifier;
     });
 
-    window.addEventListener('touchmove', (e) => {
+    window.addEventListener('touchmove', e => {
         for(let t of e.changedTouches) {
             if(t.identifier === moveTouchId) {
                 const rect = document.getElementById('joystick-container').getBoundingClientRect();
-                const dx = t.clientX - (rect.left + 60), dy = t.clientY - (rect.top + 60);
-                const dist = Math.min(Math.sqrt(dx*dx+dy*dy), 50);
-                const ang = Math.atan2(dy, dx);
-                knob.style.transform = `translate(${Math.cos(ang)*dist}px, ${Math.sin(ang)*dist}px)`;
-                moveF = -Math.sin(ang)*(dist/50); moveR = Math.cos(ang)*(dist/50);
+                const dx = t.clientX - (rect.left+60), dy = t.clientY - (rect.top+60);
+                const d = Math.min(Math.sqrt(dx*dx+dy*dy), 50);
+                const a = Math.atan2(dy, dx);
+                knob.style.transform = `translate(${Math.cos(a)*d}px,${Math.sin(a)*d}px)`;
+                moveF = -Math.sin(a)*(d/50); moveR = Math.cos(a)*(d/50);
             } else {
-                // 視点移動
-                yaw -= (e.movementX || 0) * 0.003;
-                pitch -= (e.movementY || 0) * 0.003;
+                if(lastX) { yaw -= (t.clientX-lastX)*0.005; pitch -= (t.clientY-lastY)*0.005; }
+                lastX = t.clientX; lastY = t.clientY;
             }
         }
     });
-
     window.addEventListener('touchend', e => {
-        for(let t of e.changedTouches) if(t.identifier === moveTouchId) { moveTouchId = null; moveF = moveR = 0; knob.style.transform = 'none'; }
+        for(let t of e.changedTouches) if(t.identifier === moveTouchId) { moveTouchId = null; moveF = moveR = 0; knob.style.transform = ''; }
+        lastX = lastY = null;
     });
 
     const fireBtn = document.getElementById('fire-button');
     fireBtn.onmousedown = fireBtn.ontouchstart = (e) => { e.preventDefault(); isFiring = true; };
     window.onmouseup = window.ontouchend = () => { isFiring = false; };
 
-    // --- メインループ ---
+    // --- 更新ループ ---
     function animate() {
         requestAnimationFrame(animate);
         if(!isPlaying) return;
 
         if(isFiring) fire();
 
-        // カメラと銃の同期
-        camera.rotation.set(pitch + recoilAmt, yaw, 0, 'YXZ');
-        recoilAmt *= 0.8; // 反動の減衰
+        // カメラ回転と反動
+        camera.rotation.set(pitch + recoil, yaw, 0, 'YXZ');
+        recoil *= 0.85;
 
-        // 銃を画面右下に固定
-        gunGroup.position.copy(camera.position);
-        gunGroup.quaternion.copy(camera.quaternion);
-        gunGroup.translateX(0.4); gunGroup.translateY(-0.3); gunGroup.translateZ(-0.6);
-
-        // 移動
-        camera.translateX(moveR * 0.2); camera.translateZ(-moveF * 0.2);
+        // 衝突判定付き移動
+        const oldPos = camera.position.clone();
+        camera.translateX(moveR * 0.15);
+        camera.translateZ(-moveF * 0.15);
+        
+        // 壁・障害物判定
+        let collision = false;
+        if(Math.abs(camera.position.x) > FIELD_SIZE/2 - 1 || Math.abs(camera.position.z) > FIELD_SIZE/2 - 1) collision = true;
+        obstacles.forEach(obs => {
+            if(camera.position.distanceTo(obs.position) < 2.5) collision = true;
+        });
+        if(collision) camera.position.copy(oldPos); // ぶつかったら戻す
         camera.position.y = 1.6;
 
-        // 敵の挙動
-        if(Math.random() < 0.02 && enemies.length < 10) {
-            const e = new THREE.Mesh(new THREE.BoxGeometry(1.2, 2.5, 1.2), new THREE.MeshStandardMaterial({color: 0x330000}));
-            e.position.set((Math.random()-0.5)*70, 1.25, (Math.random()-0.5)*70);
+        // 銃の同期
+        gunGroup.position.copy(camera.position);
+        gunGroup.quaternion.copy(camera.quaternion);
+        gunGroup.translateX(0.3); gunGroup.translateY(-0.25); gunGroup.translateZ(-0.5);
+
+        // 敵の生成と移動
+        if(Math.random() < 0.03 && enemies.length < 8) {
+            const e = new THREE.Mesh(new THREE.BoxGeometry(1.5, 2, 1.5), new THREE.MeshStandardMaterial({color: 0xff0000}));
+            const ang = Math.random()*Math.PI*2;
+            e.position.set(Math.cos(ang)*25, 1, Math.sin(ang)*25);
             scene.add(e); enemies.push(e);
         }
         enemies.forEach(e => {
             const d = new THREE.Vector3().subVectors(camera.position, e.position).normalize();
-            e.position.x += d.x * 0.08; e.position.z += d.z * 0.08;
+            e.position.x += d.x * 0.07; e.position.z += d.z * 0.07;
         });
 
-        // 弾道計算
-        bullets.forEach((b, i) => {
-            b.position.add(b.velocity);
+        // 弾の更新
+        for(let i=bullets.length-1; i>=0; i--) {
+            bullets[i].position.add(bullets[i].velocity);
+            bullets[i].life -= 0.02;
+            if(bullets[i].life <= 0) { scene.remove(bullets[i]); bullets.splice(i, 1); continue; }
+
             enemies.forEach((e, j) => {
-                if(b.position.distanceTo(e.position) < 1.5) {
+                if(bullets[i].position.distanceTo(e.position) < 1.5) {
                     scene.remove(e); enemies.splice(j, 1);
-                    scene.remove(b); bullets.splice(i, 1);
+                    scene.remove(bullets[i]); bullets.splice(i, 1);
                     score += 100; document.getElementById('score').innerText = score;
                 }
             });
-        });
+        }
 
         renderer.render(scene, camera);
     }
