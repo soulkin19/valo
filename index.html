@@ -3,19 +3,17 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
-  <meta name="apple-mobile-web-app-capable" content="yes"/>
-  <meta name="mobile-web-app-capable" content="yes"/>
   <title>ヘリ撃墜ゲーム</title>
   <style>
     body { margin:0; overflow:hidden; font-family:sans-serif; background:#000; touch-action: none; }
     #ui {
       position: absolute; top: 10px; left: 10px; color: white;
       background: rgba(0,0,0,0.5); padding: 8px 12px; border-radius: 8px;
-      pointer-events: none; z-index: 5;
+      pointer-events: none; z-index: 5; display: none;
     }
     #crosshair {
       position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-      font-size: 40px; color: lime; pointer-events: none; z-index: 5;
+      font-size: 40px; color: lime; pointer-events: none; z-index: 5; display: none;
     }
     #startScreen {
       position: absolute; inset: 0; background: rgba(0,0,0,0.9);
@@ -25,6 +23,11 @@
     #startScreen button {
       margin: 15px; padding: 16px 32px; font-size: 20px; cursor: pointer;
       border: none; border-radius: 8px; background: #444; color: white;
+    }
+    #debugMsg {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      color: yellow; font-size: 30px; z-index: 200; pointer-events: none;
+      display: none;
     }
     #info {
       position: absolute; bottom: 10px; left: 10px; color: #aaa; font-size: 14px;
@@ -36,7 +39,7 @@
 
 <div id="startScreen">
   <h1>ヘリコプターシューター</h1>
-  <p>銃を選択してゲーム開始</p>
+  <p>銃を選択して開始</p>
   <button data-weapon="Pistol">ピストル</button>
   <button data-weapon="Rifle">アサルトライフル</button>
   <button data-weapon="Rocket">ロケットランチャー</button>
@@ -47,11 +50,14 @@
 </div>
 
 <div id="crosshair">+</div>
-<div id="info">PC：クリックで開始 → マウスで視点・左クリック射撃<br>モバイル：左半分＝移動　右半分＝視点ドラッグ　タップ＝射撃</div>
+<div id="debugMsg">開始しました！</div>
+
+<div id="info">モバイル：左半分ドラッグ＝移動　右半分ドラッグ＝視点　タップ＝射撃<br>PC：クリックで開始 → マウス視点・左クリック射撃</div>
 
 <script type="module">
   import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.168.0/build/three.module.js';
-  import { PointerLockControls } from 'https://cdn.jsdelivr.net/npm/three@0.168.0/examples/jsm/controls/PointerLockControls.js';
+
+  // PointerLockControls はモバイルで使わないのでインポート省略（必要なら後で）
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x88aaff);
@@ -62,135 +68,98 @@
 
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setSize(innerWidth, innerHeight);
-  renderer.shadowMap.enabled = true;
   document.body.appendChild(renderer.domElement);
 
   scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-  const dirLight = new THREE.DirectionalLight(0xffffff, 1.1);
-  dirLight.position.set(80, 120, 60);
-  dirLight.castShadow = true;
-  scene.add(dirLight);
+  scene.add(new THREE.DirectionalLight(0xffffff, 1.1).position.set(80, 120, 60));
 
   const ground = new THREE.Mesh(
     new THREE.PlaneGeometry(2000, 2000),
     new THREE.MeshStandardMaterial({ color: 0x337733 })
   );
   ground.rotation.x = -Math.PI / 2;
-  ground.receiveShadow = true;
   scene.add(ground);
 
-  // ゲーム状態
   let currentWeapon = null;
   let score = 0;
   const helicopters = [];
-  const velocity = new THREE.Vector3();
-  const direction = new THREE.Vector3();
-
   let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
+  const velocity = new THREE.Vector3();
 
-  const isMobile = /Android|iPhone|iPad|iPod|webOS|BlackBerry|Windows Phone/i.test(navigator.userAgent) || 'ontouchstart' in window;
+  const isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 
-  const controls = new PointerLockControls(camera, renderer.domElement);
-
-  // デバッグ用
-  console.log("Is mobile?", isMobile);
-
-  // スタート画面のボタン
+  // スタートボタン
   document.querySelectorAll('#startScreen button').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const type = btn.dataset.weapon;
-      startGame(type);
-    });
-    btn.addEventListener('touchstart', (e) => {
+    const startFunc = (e) => {
       e.preventDefault();
       const type = btn.dataset.weapon;
-      startGame(type);
-    }, { passive: false });
+      currentWeapon = type;
+      document.getElementById('weaponName').textContent = type;
+      document.getElementById('startScreen').style.display = 'none';
+      document.getElementById('ui').style.display = 'block';
+      document.getElementById('crosshair').style.display = 'block';
+
+      // デバッグメッセージ一瞬表示
+      const msg = document.getElementById('debugMsg');
+      msg.style.display = 'block';
+      setTimeout(() => { msg.style.display = 'none'; }, 1500);
+
+      // フルスクリーン試行（モバイルで効く場合あり）
+      if (document.documentElement.requestFullscreen) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      }
+    };
+
+    btn.addEventListener('click', startFunc);
+    btn.addEventListener('touchend', startFunc, { passive: false });
   });
 
-  function startGame(type) {
-    console.log("startGame called with:", type);
-    currentWeapon = type;
-    document.getElementById('weaponName').textContent = type;
-    document.getElementById('startScreen').style.display = 'none';
-    document.getElementById('ui').style.display = 'block';
-
-    // PCならポインターロックを試みる
-    if (!isMobile) {
-      controls.lock().catch(err => console.log("Pointer lock failed:", err));
-    }
-
-    // モバイルではフルスクリーンを試みる（効く端末もある）
-    if (document.documentElement.requestFullscreen) {
-      document.documentElement.requestFullscreen().catch(() => {});
-    }
-  }
-
-  // モバイル視点制御
-  let lookTouchId = null;
-  let touchStartX = 0, touchStartY = 0;
-
+  // モバイル視点（右半分ドラッグ）
+  let lookTouch = null;
   document.addEventListener('touchstart', e => {
     if (!currentWeapon) return;
     e.preventDefault();
-    for (let touch of e.changedTouches) {
-      if (touch.clientX > innerWidth / 2 && lookTouchId === null) {
-        lookTouchId = touch.identifier;
-        touchStartX = touch.clientX;
-        touchStartY = touch.clientY;
+    for (let t of e.changedTouches) {
+      if (t.clientX > innerWidth / 2 && !lookTouch) {
+        lookTouch = t.identifier;
+        lookTouch = { id: t.identifier, x: t.clientX, y: t.clientY };
       }
     }
   }, { passive: false });
 
   document.addEventListener('touchmove', e => {
-    if (!currentWeapon) return;
+    if (!currentWeapon || !lookTouch) return;
     e.preventDefault();
-    for (let touch of e.touches) {
-      if (touch.identifier === lookTouchId) {
-        const dx = (touch.clientX - touchStartX) * 0.005;
-        const dy = (touch.clientY - touchStartY) * 0.005;
+    for (let t of e.touches) {
+      if (t.identifier === lookTouch.id) {
+        const dx = (t.clientX - lookTouch.x) * 0.006;
+        const dy = (t.clientY - lookTouch.y) * 0.006;
         camera.rotation.y -= dx;
-        camera.rotation.x = Math.max(-1.4, Math.min(1.4, camera.rotation.x - dy));
-        touchStartX = touch.clientX;
-        touchStartY = touch.clientY;
+        camera.rotation.x -= dy;
+        camera.rotation.x = Math.max(-1.5, Math.min(1.5, camera.rotation.x));
+        lookTouch.x = t.clientX;
+        lookTouch.y = t.clientY;
       }
     }
   }, { passive: false });
 
   document.addEventListener('touchend', e => {
-    for (let touch of e.changedTouches) {
-      if (touch.identifier === lookTouchId) lookTouchId = null;
+    for (let t of e.changedTouches) {
+      if (lookTouch && t.identifier === lookTouch.id) lookTouch = null;
     }
   });
 
-  // 移動（WASD + モバイル左半分）
-  document.addEventListener('keydown', e => { 
-    if (!currentWeapon) return;
-    const k = e.key.toLowerCase();
-    if (k === 'w') moveForward = true;
-    if (k === 's') moveBackward = true;
-    if (k === 'a') moveLeft = true;
-    if (k === 'd') moveRight = true;
-  });
-  document.addEventListener('keyup', e => {
-    const k = e.key.toLowerCase();
-    if (k === 'w') moveForward = false;
-    if (k === 's') moveBackward = false;
-    if (k === 'a') moveLeft = false;
-    if (k === 'd') moveRight = false;
-  });
-
-  // モバイル移動（左半分）
+  // 移動（左半分）
   document.addEventListener('touchstart', e => {
     if (!currentWeapon) return;
-    for (let touch of e.touches) {
-      if (touch.clientX < innerWidth / 2) {
-        const x = (touch.clientX / innerWidth) * 2 - 1;
-        const y = (touch.clientY / innerHeight) * 2 - 1;
-        moveForward  = y < -0.1;
-        moveBackward = y >  0.3;
-        moveLeft     = x < -0.2;
-        moveRight    = x >  0.2;
+    for (let t of e.touches) {
+      if (t.clientX < innerWidth / 2) {
+        const relX = (t.clientX - innerWidth/4) / (innerWidth/2);
+        const relY = (t.clientY - innerHeight/2) / innerHeight;
+        moveForward  = relY < -0.1;
+        moveBackward = relY > 0.1;
+        moveLeft     = relX < -0.2;
+        moveRight    = relX > 0.2;
       }
     }
   }, { passive: false });
@@ -201,21 +170,17 @@
 
   // 射撃
   const raycaster = new THREE.Raycaster();
-
   function shoot() {
     if (!currentWeapon) return;
-    console.log("Shoot!");
     raycaster.setFromCamera(new THREE.Vector2(0,0), camera);
-    const hits = raycaster.intersectObjects(helicopters, true);
-    if (hits.length > 0) {
-      const obj = hits[0].object;
-      let group = obj;
-      while (group.parent && group.parent !== scene) group = group.parent;
-      if (group.userData.hp !== undefined) {
-        group.userData.hp--;
-        if (group.userData.hp <= 0) {
-          scene.remove(group);
-          helicopters.splice(helicopters.indexOf(group), 1);
+    const intersects = raycaster.intersectObjects(helicopters, true);
+    if (intersects.length > 0) {
+      let hit = intersects[0].object.parent;
+      if (hit.userData.hp) {
+        hit.userData.hp--;
+        if (hit.userData.hp <= 0) {
+          scene.remove(hit);
+          helicopters.splice(helicopters.indexOf(hit), 1);
           score += 100;
           document.getElementById('score').textContent = score;
         }
@@ -223,72 +188,54 @@
     }
   }
 
-  document.addEventListener('mousedown', e => { if (e.button === 0 && currentWeapon) shoot(); });
   document.addEventListener('touchstart', e => {
-    if (currentWeapon && e.touches[0].clientX > innerWidth / 3) {
-      shoot();
-    }
+    if (currentWeapon && e.touches[0].clientX > innerWidth / 3) shoot();
   }, { passive: false });
 
-  // 敵
-  function spawnHelicopter() {
+  // 敵生成（簡易）
+  function spawn() {
     if (!currentWeapon) return;
-    const group = new THREE.Group();
-    const body = new THREE.Mesh(
-      new THREE.BoxGeometry(4, 1.8, 9),
-      new THREE.MeshStandardMaterial({ color: 0x222 })
-    );
-    group.add(body);
-
-    group.position.set(
-      (Math.random() - 0.5) * 400,
-      30 + Math.random() * 80,
-      -300 - Math.random() * 200
-    );
-
-    group.userData = {
-      hp: currentWeapon === 'Rocket' ? 3 : currentWeapon === 'Rifle' ? 2 : 1,
-      speed: 0.4 + Math.random() * 0.5
-    };
-
-    scene.add(group);
-    helicopters.push(group);
+    const g = new THREE.Group();
+    g.add(new THREE.Mesh(new THREE.BoxGeometry(4,2,8), new THREE.MeshStandardMaterial({color:0x222})));
+    g.position.set((Math.random()-0.5)*300, 40 + Math.random()*60, -400);
+    g.userData = { hp: currentWeapon === 'Rocket' ? 3 : 1, speed: 0.6 + Math.random()*0.4 };
+    scene.add(g);
+    helicopters.push(g);
   }
+  setInterval(spawn, 3000);
 
-  setInterval(spawnHelicopter, 4000);
-
-  // ループ
   function animate() {
     requestAnimationFrame(animate);
 
     if (currentWeapon) {
-      direction.z = Number(moveForward) - Number(moveBackward);
-      direction.x = Number(moveRight) - Number(moveLeft);
-      direction.normalize();
+      const speed = 0.2;
+      velocity.set(
+        (moveRight - moveLeft) * speed,
+        0,
+        (moveForward - moveBackward) * speed
+      );
 
-      const speed = 0.15;
-      velocity.z = direction.z * speed;
-      velocity.x = direction.x * speed;
+      const forward = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion);
+      const right = new THREE.Vector3(1,0,0).applyQuaternion(camera.quaternion);
 
-      controls.moveRight(velocity.x);
-      controls.moveForward(velocity.z);
+      camera.position.add(forward.multiplyScalar(velocity.z));
+      camera.position.add(right.multiplyScalar(velocity.x));
 
-      helicopters.forEach((h, i) => {
+      helicopters.forEach((h,i) => {
         h.position.z += h.userData.speed;
-        if (h.position.distanceTo(camera.position) < 15) {
-          alert("ゲームオーバー！ スコア: " + score);
+        if (h.position.distanceTo(camera.position) < 20) {
+          alert('ゲームオーバー！スコア: ' + score);
           location.reload();
         }
-        if (h.position.z > 100) {
+        if (h.position.z > 200) {
           scene.remove(h);
-          helicopters.splice(i, 1);
+          helicopters.splice(i,1);
         }
       });
     }
 
     renderer.render(scene, camera);
   }
-
   animate();
 
   window.addEventListener('resize', () => {
