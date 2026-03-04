@@ -3,47 +3,41 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Tactical Ops: M16/VAL/S12K</title>
+    <title>Tactical Ops: Extreme Spec</title>
     <style>
         body { margin: 0; overflow: hidden; font-family: 'Courier New', monospace; background: #222; touch-action: none; }
         canvas { display: block; }
-
-        /* UI */
         #menu {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(20,20,20,0.95); display: flex; flex-direction: column;
+            background: rgba(15,15,15,0.98); display: flex; flex-direction: column;
             align-items: center; justify-content: center; color: #fff; z-index: 20;
         }
-        .config-group { margin: 15px; width: 320px; padding: 10px; border: 1px solid #444; background: #111; }
-        select { width: 100%; padding: 10px; background: #333; color: #fff; border: none; font-size: 16px; }
-        #start-btn { margin-top: 20px; padding: 15px 50px; background: #0066ff; color: #fff; border: none; cursor: pointer; font-weight: bold; }
-
-        #ui { position: absolute; top: 20px; left: 20px; color: #0f0; font-size: 18px; text-shadow: 2px 2px #000; pointer-events: none; }
-        #crosshair { position: absolute; top: 50%; left: 50%; width: 24px; height: 24px; border: 1px solid #0f0; transform: translate(-50%, -50%); pointer-events: none; }
-        
-        /* Joystick */
-        #joystick-container { position: absolute; bottom: 40px; left: 40px; width: 120px; height: 120px; background: rgba(255,255,255,0.1); border-radius: 50%; border: 2px solid #666; }
-        #joystick-knob { position: absolute; top: 35px; left: 35px; width: 50px; height: 50px; background: #999; border-radius: 50%; }
-        
-        #fire-button { position: absolute; bottom: 40px; right: 40px; width: 100px; height: 100px; background: #aa0000; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; border: 5px solid #333; }
+        .config-group { margin: 15px; width: 320px; padding: 15px; border: 1px solid #ff0000; background: #000; }
+        select { width: 100%; padding: 10px; background: #222; color: #f00; border: 1px solid #f00; font-size: 16px; font-weight: bold; }
+        #start-btn { margin-top: 20px; padding: 15px 60px; background: #f00; color: #fff; border: none; cursor: pointer; font-weight: bold; text-transform: uppercase; }
+        #ui { position: absolute; top: 20px; left: 20px; color: #f00; font-size: 18px; font-weight: bold; pointer-events: none; }
+        #crosshair { position: absolute; top: 50%; left: 50%; width: 24px; height: 24px; border: 1px solid #f00; transform: translate(-50%, -50%); pointer-events: none; }
+        #joystick-container { position: absolute; bottom: 40px; left: 40px; width: 120px; height: 120px; background: rgba(255,0,0,0.05); border-radius: 50%; border: 2px solid #500; }
+        #joystick-knob { position: absolute; top: 35px; left: 35px; width: 50px; height: 50px; background: #500; border-radius: 50%; border: 1px solid #f00; }
+        #fire-button { position: absolute; bottom: 40px; right: 40px; width: 100px; height: 100px; background: #400; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; border: 4px solid #f00; box-shadow: 0 0 15px #f00; }
     </style>
 </head>
 <body>
 
 <div id="menu">
-    <h1>SELECT WEAPON</h1>
+    <h1 style="color:#f00; letter-spacing: 10px;">TACTICAL DEPLOY</h1>
     <div class="config-group">
-        <label>FIREARM PLATFORM</label>
+        <label>SELECT FIREARM</label>
         <select id="gun-type">
             <option value="m16">M16 (3-Round Burst)</option>
-            <option value="asval">AS VAL (972 RPM Full-Auto)</option>
-            <option value="s12k">S12K (Semi-Auto Shotgun)</option>
+            <option value="asval">AS VAL (1200 RPM / Extreme Recoil)</option>
+            <option value="s12k">S12K (Point-Blank Shotgun)</option>
         </select>
     </div>
-    <button id="start-btn">DEPLOY</button>
+    <button id="start-btn">ENGAGE</button>
 </div>
 
-<div id="ui">SCORE: <span id="score">0</span> | WEAPON: <span id="w-name">-</span></div>
+<div id="ui">SCORE: <span id="score">0</span> | UNIT: <span id="w-name">-</span></div>
 <div id="crosshair"></div>
 <div id="joystick-container"><div id="joystick-knob"></div></div>
 <div id="fire-button">FIRE</div>
@@ -55,52 +49,43 @@
 <script type="module">
     import * as THREE from 'three';
 
-    // --- ゲーム設定 ---
     let selectedGun = "m16";
     let isPlaying = false, isFiring = false;
     const FIELD_SIZE = 60;
     let score = 0, lastFireTime = 0;
 
-    // --- シーン・カメラ・レンダラー ---
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x444444); // 背景を明るいグレーに
+    scene.background = new THREE.Color(0x333333);
     const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     document.body.appendChild(renderer.domElement);
 
-    // --- 明るいライティング ---
-    const ambient = new THREE.AmbientLight(0xffffff, 0.8); // 全体を明るく
+    const ambient = new THREE.AmbientLight(0xffffff, 0.9);
     scene.add(ambient);
-    const sun = new THREE.DirectionalLight(0xffffff, 1.2);
-    sun.position.set(10, 20, 10);
+    const sun = new THREE.DirectionalLight(0xffffff, 1.0);
+    sun.position.set(10, 25, 10);
     scene.add(sun);
 
-    // --- フィールド & 障害物 ---
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(FIELD_SIZE, FIELD_SIZE), new THREE.MeshStandardMaterial({color: 0x666666}));
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(FIELD_SIZE, FIELD_SIZE), new THREE.MeshStandardMaterial({color: 0x555555}));
     floor.rotation.x = -Math.PI/2;
     scene.add(floor);
 
     const obstacles = [];
-    const obsGeo = new THREE.BoxGeometry(4, 4, 4);
-    const obsMat = new THREE.MeshStandardMaterial({color: 0x222222});
     for(let i=0; i<15; i++) {
-        const box = new THREE.Mesh(obsGeo, obsMat);
-        box.position.set((Math.random()-0.5)*50, 2, (Math.random()-0.5)*50);
+        const box = new THREE.Mesh(new THREE.BoxGeometry(4, 5, 4), new THREE.MeshStandardMaterial({color: 0x1a1a1a}));
+        box.position.set((Math.random()-0.5)*50, 2.5, (Math.random()-0.5)*50);
         scene.add(box);
         obstacles.push(box);
     }
 
-    // --- 銃の見た目 ---
     const gunGroup = new THREE.Group();
-    const gunBody = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.2, 0.8), new THREE.MeshStandardMaterial({color: 0x111111}));
+    const gunBody = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.18, 0.9), new THREE.MeshStandardMaterial({color: 0x050505}));
     gunGroup.add(gunBody);
     scene.add(gunGroup);
 
-    // --- 変数 ---
     let enemies = [], bullets = [], yaw = 0, pitch = 0, moveF = 0, moveR = 0, recoil = 0;
 
-    // --- スタート処理 ---
     document.getElementById('start-btn').onclick = () => {
         selectedGun = document.getElementById('gun-type').value;
         document.getElementById('w-name').innerText = selectedGun.toUpperCase();
@@ -108,53 +93,49 @@
         isPlaying = true;
     };
 
-    // --- 射撃ロジック (M16 / AS VAL / S12K) ---
     async function fire() {
         const now = Date.now();
         
         if (selectedGun === "asval") {
-            const interval = 1000 / (972 / 60); // 972 RPM = 約61ms
+            const interval = 50; // 1200 RPM
             if (now - lastFireTime < interval) return;
             spawnBullet();
-            recoil = 0.05;
+            recoil += 0.12; // 強烈な反動（累積）
         } 
         else if (selectedGun === "m16") {
-            if (now - lastFireTime < 600) return; // バースト間のディレイ
+            if (now - lastFireTime < 500) return;
             for(let i=0; i<3; i++) {
                 spawnBullet();
-                recoil += 0.04;
-                await new Promise(r => setTimeout(r, 80)); // 3点バーストの間隔
+                recoil += 0.05;
+                await new Promise(r => setTimeout(r, 70));
             }
         } 
         else if (selectedGun === "s12k") {
-            if (now - lastFireTime < 400) return;
-            for(let i=0; i<8; i++) { // 散弾
-                spawnBullet(true);
-            }
-            recoil = 0.2;
+            if (now - lastFireTime < 450) return;
+            for(let i=0; i<10; i++) spawnBullet(true);
+            recoil += 0.25;
         }
         lastFireTime = Date.now();
     }
 
     function spawnBullet(isShotgun = false) {
-        const b = new THREE.Mesh(new THREE.SphereGeometry(0.08), new THREE.MeshBasicMaterial({color: 0xffff00}));
+        const b = new THREE.Mesh(new THREE.SphereGeometry(0.07), new THREE.MeshBasicMaterial({color: 0xffcc00}));
         b.position.copy(camera.position).add(new THREE.Vector3(0.3, -0.2, -0.5).applyQuaternion(camera.quaternion));
         const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
         
-        if(isShotgun) { // 散弾の広がり
-            dir.x += (Math.random()-0.5)*0.15;
-            dir.y += (Math.random()-0.5)*0.15;
-            b.life = 0.5; // S12Kは距離減衰（寿命）
+        if(isShotgun) {
+            dir.x += (Math.random()-0.5)*0.25;
+            dir.y += (Math.random()-0.5)*0.25;
+            b.life = 0.15; // 極短距離で消滅
         } else {
-            b.life = 2.0;
+            b.life = 1.5;
         }
 
-        b.velocity = dir.normalize().multiplyScalar(1.8);
+        b.velocity = dir.normalize().multiplyScalar(2.0);
         bullets.push(b);
         scene.add(b);
     }
 
-    // --- 操作設定 ---
     const knob = document.getElementById('joystick-knob');
     let moveTouchId = null, lastX, lastY;
 
@@ -186,66 +167,64 @@
     fireBtn.onmousedown = fireBtn.ontouchstart = (e) => { e.preventDefault(); isFiring = true; };
     window.onmouseup = window.ontouchend = () => { isFiring = false; };
 
-    // --- 更新ループ ---
     function animate() {
         requestAnimationFrame(animate);
         if(!isPlaying) return;
 
         if(isFiring) fire();
 
-        // カメラ回転と反動
         camera.rotation.set(pitch + recoil, yaw, 0, 'YXZ');
-        recoil *= 0.85;
+        recoil *= 0.88; // 反動が徐々に収まる
 
-        // 衝突判定付き移動
         const oldPos = camera.position.clone();
-        camera.translateX(moveR * 0.15);
-        camera.translateZ(-moveF * 0.15);
+        camera.translateX(moveR * 0.18);
+        camera.translateZ(-moveF * 0.18);
         
-        // 壁・障害物判定
         let collision = false;
-        if(Math.abs(camera.position.x) > FIELD_SIZE/2 - 1 || Math.abs(camera.position.z) > FIELD_SIZE/2 - 1) collision = true;
+        if(Math.abs(camera.position.x) > FIELD_SIZE/2 - 1.5 || Math.abs(camera.position.z) > FIELD_SIZE/2 - 1.5) collision = true;
         obstacles.forEach(obs => {
-            if(camera.position.distanceTo(obs.position) < 2.5) collision = true;
+            if(camera.position.distanceTo(obs.position) < 2.8) collision = true;
         });
-        if(collision) camera.position.copy(oldPos); // ぶつかったら戻す
+        if(collision) camera.position.copy(oldPos);
         camera.position.y = 1.6;
 
-        // 銃の同期
         gunGroup.position.copy(camera.position);
         gunGroup.quaternion.copy(camera.quaternion);
         gunGroup.translateX(0.3); gunGroup.translateY(-0.25); gunGroup.translateZ(-0.5);
 
-        // 敵の生成と移動
-        if(Math.random() < 0.03 && enemies.length < 8) {
-            const e = new THREE.Mesh(new THREE.BoxGeometry(1.5, 2, 1.5), new THREE.MeshStandardMaterial({color: 0xff0000}));
+        if(Math.random() < 0.04 && enemies.length < 10) {
+            const e = new THREE.Mesh(new THREE.BoxGeometry(1.5, 2, 1.5), new THREE.MeshStandardMaterial({color: 0xff0000, emissive: 0x330000}));
             const ang = Math.random()*Math.PI*2;
-            e.position.set(Math.cos(ang)*25, 1, Math.sin(ang)*25);
+            e.position.set(Math.cos(ang)*28, 1, Math.sin(ang)*28);
             scene.add(e); enemies.push(e);
         }
         enemies.forEach(e => {
             const d = new THREE.Vector3().subVectors(camera.position, e.position).normalize();
-            e.position.x += d.x * 0.07; e.position.z += d.z * 0.07;
+            e.position.x += d.x * 0.09; e.position.z += d.z * 0.09;
         });
 
-        // 弾の更新
         for(let i=bullets.length-1; i>=0; i--) {
             bullets[i].position.add(bullets[i].velocity);
             bullets[i].life -= 0.02;
             if(bullets[i].life <= 0) { scene.remove(bullets[i]); bullets.splice(i, 1); continue; }
 
             enemies.forEach((e, j) => {
-                if(bullets[i].position.distanceTo(e.position) < 1.5) {
+                if(bullets[i].position.distanceTo(e.position) < 1.6) {
                     scene.remove(e); enemies.splice(j, 1);
                     scene.remove(bullets[i]); bullets.splice(i, 1);
                     score += 100; document.getElementById('score').innerText = score;
                 }
             });
         }
-
         renderer.render(scene, camera);
     }
     animate();
+
+    window.onresize = () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    };
 </script>
 </body>
 </html>
