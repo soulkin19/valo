@@ -3,72 +3,41 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Mobile Heli Shooter 3D</title>
+    <title>Advanced Mobile Shooter</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; touch-action: none; font-family: sans-serif; }
-        canvas { display: block; }
-
-        /* UIレイアウト */
-        #hud {
-            position: absolute; top: 10px; left: 10px; color: white;
-            text-shadow: 1px 1px 2px black; pointer-events: none; font-size: 14px;
-        }
+        #hud { position: absolute; top: 10px; left: 10px; color: white; pointer-events: none; }
         
-        /* ジョイスティック（移動・視点用） */
-        #joystick-container {
-            position: absolute; bottom: 40px; left: 40px;
-            width: 120px; height: 120px; background: rgba(255,255,255,0.2);
-            border-radius: 50%; touch-action: none;
+        /* 左側の移動用ジョイスティック */
+        #move-joy-container {
+            position: absolute; bottom: 50px; left: 40px;
+            width: 100px; height: 100px; background: rgba(255,255,255,0.1); border-radius: 50%;
         }
-        #joystick-knob {
-            position: absolute; top: 35px; left: 35px;
-            width: 50px; height: 50px; background: rgba(255,255,255,0.5);
-            border-radius: 50%;
+        #move-joy-knob {
+            position: absolute; top: 30px; left: 30px;
+            width: 40px; height: 40px; background: rgba(255,255,255,0.4); border-radius: 50%;
         }
 
-        /* 射撃ボタン */
+        /* 右下の射撃ボタン */
         #fire-btn {
-            position: absolute; bottom: 50px; right: 40px;
-            width: 80px; height: 80px; background: rgba(255, 0, 0, 0.5);
-            border: 4px solid white; border-radius: 50%;
-            display: flex; align-items: center; justify-content: center;
-            color: white; font-weight: bold; font-size: 18px;
+            position: absolute; bottom: 60px; right: 40px;
+            width: 80px; height: 80px; background: rgba(255, 50, 50, 0.6);
+            border-radius: 50%; display: flex; align-items: center; justify-content: center;
+            color: white; font-weight: bold; font-size: 16px; border: 3px solid #fff;
         }
-
-        /* 武器切り替え */
-        #weapon-select {
-            position: absolute; top: 10px; right: 10px;
-            display: flex; gap: 5px;
-        }
-        .w-btn {
-            padding: 8px; background: rgba(0,0,0,0.5); color: white; border: 1px solid white;
-        }
-        .active { background: orange; }
 
         #crosshair {
             position: absolute; top: 50%; left: 50%;
-            width: 30px; height: 30px; border: 2px solid rgba(0,255,0,0.5);
-            transform: translate(-50%, -50%); pointer-events: none;
+            width: 24px; height: 24px; border: 2px solid rgba(255,255,255,0.5);
+            transform: translate(-50%, -50%); border-radius: 50%; pointer-events: none;
         }
     </style>
 </head>
 <body>
 
-    <div id="hud">
-        HP: <span id="hp">100</span> | ENEMIES: <span id="ecount">3</span>
-    </div>
-
-    <div id="weapon-select">
-        <div id="w1" class="w-btn active">RIFLE</div>
-        <div id="w2" class="w-btn">ROCKET</div>
-    </div>
-
+    <div id="hud">HP: <span id="hp">100</span> | TARGETS: <span id="ecount">3</span></div>
     <div id="crosshair"></div>
-
-    <div id="joystick-container">
-        <div id="joystick-knob"></div>
-    </div>
-
+    <div id="move-joy-container"><div id="move-joy-knob"></div></div>
     <div id="fire-btn">FIRE</div>
 
     <script type="importmap">
@@ -78,164 +47,99 @@
     <script type="module">
         import * as THREE from 'three';
 
-        // --- シーン構築 ---
+        // --- シーン・カメラ設定 ---
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x112233);
+        scene.background = new THREE.Color(0x050510);
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 2, 5);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
 
-        const light = new THREE.DirectionalLight(0xffffff, 1);
-        light.position.set(10, 20, 10);
-        scene.add(light);
-        scene.add(new THREE.AmbientLight(0x666666));
+        scene.add(new THREE.AmbientLight(0x888888));
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1);
+        dirLight.position.set(5, 10, 5);
+        scene.add(dirLight);
 
-        // 地面
-        const ground = new THREE.GridHelper(200, 40, 0xffffff, 0x444444);
+        const ground = new THREE.GridHelper(200, 50, 0x4444ff, 0x222222);
         scene.add(ground);
 
-        // --- ゲーム変数 ---
-        let playerHP = 100;
-        let weaponType = 'rifle';
-        let enemies = [];
-        let bullets = [];
-        let enemyBullets = [];
-
-        // ジョイスティック変数
-        let joyPos = { x: 0, y: 0 };
-        let isTouchingJoy = false;
+        // --- 操作変数 ---
+        let moveVec = { x: 0, y: 0 };
         let yaw = 0, pitch = 0;
+        let lastTouchX = 0, lastTouchY = 0;
 
-        // --- 敵ヘリ生成 ---
-        function spawnHeli() {
-            const group = new THREE.Group();
-            const body = new THREE.Mesh(new THREE.BoxGeometry(3, 1.5, 5), new THREE.MeshStandardMaterial({color: 0x2d5a27}));
-            group.add(body);
-            const rotor = new THREE.Mesh(new THREE.BoxGeometry(7, 0.1, 0.6), new THREE.MeshStandardMaterial({color: 0x000000}));
-            rotor.position.y = 1;
-            group.add(rotor);
-            
-            group.position.set(Math.random()*60-30, 15, -50 - Math.random()*20);
-            scene.add(group);
-            return { mesh: group, rotor: rotor, hp: 60, lastShot: 0 };
-        }
-        for(let i=0; i<3; i++) enemies.push(spawnHeli());
-
-        // --- ジョイスティック制御 ---
-        const joyContainer = document.getElementById('joystick-container');
-        const joyKnob = document.getElementById('joystick-knob');
-
-        joyContainer.addEventListener('touchstart', (e) => { isTouchingJoy = true; });
-        window.addEventListener('touchmove', (e) => {
-            if (!isTouchingJoy) return;
+        // 移動用ジョイスティックのロジック
+        const joyContainer = document.getElementById('move-joy-container');
+        const joyKnob = document.getElementById('move-joy-knob');
+        
+        joyContainer.addEventListener('touchstart', e => { e.stopPropagation(); }, {passive: false});
+        joyContainer.addEventListener('touchmove', e => {
             const touch = e.touches[0];
             const rect = joyContainer.getBoundingClientRect();
-            const centerX = rect.left + rect.width / 2;
-            const centerY = rect.top + rect.height / 2;
+            let dx = touch.clientX - (rect.left + 50);
+            let dy = touch.clientY - (rect.top + 50);
+            const dist = Math.min(Math.sqrt(dx*dx + dy*dy), 40);
+            const angle = Math.atan2(dy, dx);
             
-            let dx = touch.clientX - centerX;
-            let dy = touch.clientY - centerY;
-            const dist = Math.sqrt(dx*dx + dy*dy);
-            const maxDist = 40;
+            const moveX = Math.cos(angle) * dist;
+            const moveY = Math.sin(angle) * dist;
+            joyKnob.style.transform = `translate(${moveX}px, ${moveY}px)`;
+            
+            moveVec.x = moveX / 40;
+            moveVec.y = moveY / 40;
+        });
+        joyContainer.addEventListener('touchend', () => {
+            joyKnob.style.transform = `translate(0,0)`;
+            moveVec = { x: 0, y: 0 };
+        });
 
-            if (dist > maxDist) {
-                dx *= maxDist / dist;
-                dy *= maxDist / dist;
+        // 画面右半分のスライドで視点操作
+        window.addEventListener('touchstart', e => {
+            const touch = e.touches[0];
+            if (touch.clientX > window.innerWidth / 2) {
+                lastTouchX = touch.clientX;
+                lastTouchY = touch.clientY;
             }
-
-            joyKnob.style.transform = `translate(${dx}px, ${dy}px)`;
-            joyPos.x = dx / maxDist;
-            joyPos.y = dy / maxDist;
-        });
-        window.addEventListener('touchend', () => {
-            isTouchingJoy = false;
-            joyKnob.style.transform = `translate(0px, 0px)`;
-            joyPos = { x: 0, y: 0 };
         });
 
-        // --- 射撃・武器切り替え ---
-        document.getElementById('fire-btn').addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            fire();
+        window.addEventListener('touchmove', e => {
+            const touch = Array.from(e.touches).find(t => t.clientX > window.innerWidth / 2);
+            if (touch) {
+                const dx = touch.clientX - lastTouchX;
+                const dy = touch.clientY - lastTouchY;
+                yaw -= dx * 0.005;
+                pitch -= dy * 0.005;
+                pitch = Math.max(-Math.PI/2.1, Math.min(Math.PI/2.1, pitch));
+                lastTouchX = touch.clientX;
+                lastTouchY = touch.clientY;
+            }
         });
 
-        document.getElementById('w1').onclick = () => { weaponType = 'rifle'; updateWUI('w1'); };
-        document.getElementById('w2').onclick = () => { weaponType = 'rocket'; updateWUI('w2'); };
+        // --- ゲームループ ---
+        function animate() {
+            requestAnimationFrame(animate);
 
-        function updateWUI(id) {
-            document.querySelectorAll('.w-btn').forEach(b => b.classList.remove('active'));
-            document.getElementById(id).classList.add('active');
-        }
-
-        function fire() {
-            const b = new THREE.Mesh(new THREE.SphereGeometry(0.3), new THREE.MeshBasicMaterial({color: weaponType === 'rifle' ? 0xffaa00 : 0xff4400}));
-            b.position.copy(camera.position);
-            const dir = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion);
-            b.userData.vel = dir.multiplyScalar(weaponType === 'rifle' ? 2.5 : 1.2);
-            bullets.push(b);
-            scene.add(b);
-        }
-
-        // --- 更新ループ ---
-        function update() {
-            requestAnimationFrame(update);
-
-            // 視点移動 (ジョイスティック値から)
-            yaw -= joyPos.x * 0.05;
-            pitch -= joyPos.y * 0.05;
-            pitch = Math.max(-1, Math.min(1, pitch));
+            // 視点更新
             camera.quaternion.setFromEuler(new THREE.Euler(pitch, yaw, 0, 'YXZ'));
 
-            // 自弾
-            bullets.forEach((b, i) => {
-                b.position.add(b.userData.vel);
-                enemies.forEach((e, ei) => {
-                    if(b.position.distanceTo(e.mesh.position) < 3) {
-                        e.hp -= 20;
-                        scene.remove(b); bullets.splice(i, 1);
-                        if(e.hp <= 0) {
-                            scene.remove(e.mesh); enemies.splice(ei, 1);
-                            document.getElementById('ecount').innerText = enemies.length;
-                        }
-                    }
-                });
-            });
+            // 移動計算 (カメラの向きに合わせて前後左右に移動)
+            const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+            forward.y = 0; forward.normalize();
+            const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0,1,0)).negate();
 
-            // 敵ヘリと敵弾
-            enemies.forEach(e => {
-                e.rotor.rotation.y += 0.4;
-                e.mesh.position.x += Math.sin(Date.now()*0.001) * 0.2;
-
-                if(Date.now() - e.lastShot > 1500) {
-                    const eb = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 1), new THREE.MeshBasicMaterial({color: 0xff0000}));
-                    eb.position.copy(e.mesh.position);
-                    eb.lookAt(camera.position);
-                    const dir = new THREE.Vector3().subVectors(camera.position, e.mesh.position).normalize();
-                    eb.userData.vel = dir.multiplyScalar(0.5);
-                    enemyBullets.push(eb);
-                    scene.add(eb);
-                    e.lastShot = Date.now();
-                }
-            });
-
-            enemyBullets.forEach((eb, i) => {
-                eb.position.add(eb.userData.vel);
-                if(eb.position.distanceTo(camera.position) < 1.5) {
-                    playerHP -= 10;
-                    document.getElementById('hp').innerText = playerHP;
-                    scene.remove(eb); enemyBullets.splice(i, 1);
-                }
-            });
+            camera.position.addScaledVector(forward, -moveVec.y * 0.2);
+            camera.position.addScaledVector(right, -moveVec.x * 0.2);
 
             renderer.render(scene, camera);
         }
-        update();
+        animate();
 
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
+        // 射撃ボタンの動作（簡易）
+        document.getElementById('fire-btn').addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            console.log("射撃！");
+            // ここに弾丸生成ロジックを追加
         });
     </script>
 </body>
