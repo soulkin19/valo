@@ -2,233 +2,176 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>VALORANT Clone - Bot AI Update</title>
+    <title>Simple 3D PvE FPS</title>
     <style>
-        body { margin: 0; overflow: hidden; font-family: 'Arial', sans-serif; background: #000; }
+        body { margin: 0; overflow: hidden; font-family: sans-serif; }
         #crosshair {
             position: absolute; top: 50%; left: 50%;
-            width: 10px; height: 10px;
-            border: 2px solid #00ff00;
+            width: 20px; height: 20px;
+            border: 2px solid white; border-radius: 50%;
             transform: translate(-50%, -50%);
             pointer-events: none;
         }
         #ui {
-            position: absolute; bottom: 30px; left: 30px;
-            color: white; text-shadow: 2px 2px 4px #000;
+            position: absolute; top: 20px; left: 20px;
+            color: white; font-size: 24px; text-shadow: 2px 2px 4px #000;
         }
-        .stat { font-size: 32px; font-weight: bold; margin-bottom: 5px; }
-        #hp-bar-container { width: 200px; height: 10px; background: #444; border: 2px solid #fff; }
-        #hp-bar { width: 100%; height: 100%; background: #00ff88; transition: width 0.2s; }
-        #msg {
-            position: absolute; top: 50%; width: 100%; text-align: center;
-            color: white; font-size: 24px; display: block; background: rgba(0,0,0,0.5); padding: 20px 0;
+        #instructions {
+            position: absolute; top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            color: white; background: rgba(0,0,0,0.5); padding: 20px;
+            text-align: center; cursor: pointer;
         }
     </style>
 </head>
 <body>
+
+    <div id="ui">Score: <span id="score">0</span></div>
     <div id="crosshair"></div>
-    <div id="ui">
-        <div class="stat">HP: <span id="hp-text">100</span></div>
-        <div id="hp-bar-container"><div id="hp-bar"></div></div>
-        <div class="stat" style="font-size: 20px; margin-top: 10px;">KILLS: <span id="kills">0</span></div>
+    <div id="instructions">
+        <h1>PvE FPS Start</h1>
+        <p>画面をクリックして開始</p>
+        <p>(WASDで移動 / マウスで視点 / クリックで射撃)</p>
     </div>
-    <div id="msg">クリックしてエントリー<br><small>WASD: 移動 | SPACE: 射撃</small></div>
 
     <script type="importmap">
         {
-            "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" }
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
         }
     </script>
 
     <script type="module">
         import * as THREE from 'three';
+        import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 
-        // --- ゲーム状態 ---
-        let playerHP = 100;
-        let killCount = 0;
-        const bots = [];
-        const walls = [];
-        const clock = new THREE.Clock();
-
-        // --- シーン構築 ---
+        // --- 基本設定 ---
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x1a1a2e);
+        scene.background = new THREE.Color(0x87ceeb); // 空色
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
 
-        const ambient = new THREE.AmbientLight(0xffffff, 0.5);
-        scene.add(ambient);
-        const sun = new THREE.DirectionalLight(0xffffff, 0.8);
-        sun.position.set(5, 15, 5);
-        scene.add(sun);
+        // --- ライティング ---
+        const light = new THREE.HemisphereLight(0xffffff, 0x444444, 1);
+        scene.add(light);
 
-        // --- フィールド作成 ---
-        function createBox(x, y, z, w, h, d, color) {
-            const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshStandardMaterial({ color }));
-            mesh.position.set(x, y + h/2, z);
-            scene.add(mesh);
-            walls.push(mesh);
-            return mesh;
-        }
-
-        // 地面と壁
-        const floor = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), new THREE.MeshStandardMaterial({ color: 0x222222 }));
+        // --- 地面 ---
+        const floorGeometry = new THREE.PlaneGeometry(100, 100);
+        const floorMaterial = new THREE.MeshPhongMaterial({ color: 0x555555 });
+        const floor = new THREE.Mesh(floorGeometry, floorMaterial);
         floor.rotation.x = -Math.PI / 2;
         scene.add(floor);
 
-        createBox(0, 0, -20, 40, 4, 1, 0x333344); // 奥の壁
-        createBox(-10, 0, 5, 4, 3, 4, 0xff4400);   // 遮蔽物A
-        createBox(10, 0, -5, 3, 5, 3, 0x0077ff);   // 遮蔽物B
-        createBox(0, 0, 15, 10, 2, 2, 0x555555);   // 低い壁
+        // --- 操作設定 ---
+        const controls = new PointerLockControls(camera, document.body);
+        const instructions = document.getElementById('instructions');
 
-        // --- Bot AI クラス ---
-        class Bot {
-            constructor() {
-                const group = new THREE.Group();
-                const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.5, 1, 4, 8), new THREE.MeshStandardMaterial({ color: 0xff0044 }));
-                body.position.y = 1;
-                group.add(body);
-                
-                // 向きがわかるように「目」を追加
-                const eyes = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.2, 0.2), new THREE.MeshStandardMaterial({ color: 0x000000 }));
-                eyes.position.set(0, 1.3, -0.4);
-                group.add(eyes);
+        instructions.addEventListener('click', () => controls.lock());
+        controls.addEventListener('lock', () => instructions.style.display = 'none');
+        controls.addEventListener('unlock', () => instructions.style.display = 'block');
 
-                this.mesh = group;
-                this.mesh.position.set((Math.random()-0.5)*30, 0, (Math.random()-0.5)*30);
-                scene.add(this.mesh);
-                
-                this.lastShootTime = 0;
-                this.velocity = new THREE.Vector3();
-            }
-
-            update(delta, playerPos) {
-                const dist = this.mesh.position.distanceTo(playerPos);
-                
-                // 1. プレイヤーの方を向く
-                this.mesh.lookAt(playerPos.x, 0, playerPos.z);
-
-                // 2. 移動ロジック: 遠すぎたら近づき、近すぎたら止まる (VALORANTのBotっぽく)
-                if (dist > 15) {
-                    const dir = new THREE.Vector3().subVectors(playerPos, this.mesh.position).normalize();
-                    this.mesh.position.addScaledVector(dir, 3 * delta);
-                } 
-                
-                // 3. 射撃ロジック: 視線が通っていれば撃つ
-                if (dist < 25 && Date.now() - this.lastShootTime > 1500) { // 1.5秒に1回
-                    this.shoot(playerPos);
-                    this.lastShootTime = Date.now();
-                }
-            }
-
-            shoot(playerPos) {
-                // レイキャストで壁に遮られていないか確認
-                const ray = new THREE.Raycaster();
-                const dir = new THREE.Vector3().subVectors(playerPos, this.mesh.position).normalize();
-                ray.set(this.mesh.position.clone().add(new THREE.Vector3(0, 1.3, 0)), dir);
-                
-                const intersects = ray.intersectObjects(walls);
-                if (intersects.length > 0 && intersects[0].distance < playerPos.distanceTo(this.mesh.position)) {
-                    return; // 壁に当たった
-                }
-
-                // プレイヤーへのヒット（簡易判定）
-                createTracer(this.mesh.position.clone().add(new THREE.Vector3(0, 1.3, 0)), playerPos, 0xff0000);
-                damagePlayer(10);
-            }
-        }
-
-        function spawnBot() { bots.push(new Bot()); }
-        for(let i=0; i<3; i++) spawnBot();
-
-        // --- プレイヤー操作 ---
-        camera.position.set(0, 1.6, 10);
+        // --- ゲーム状態 ---
+        let score = 0;
+        const enemies = [];
+        const bullets = [];
+        const moveSpeed = 0.1;
         const keys = {};
-        window.addEventListener('keydown', (e) => {
-            keys[e.code] = true;
-            if(e.code === 'Space') shoot();
+
+        document.addEventListener('keydown', (e) => keys[e.code] = true);
+        document.addEventListener('keyup', (e) => keys[e.code] = false);
+
+        // --- 射撃機能 ---
+        window.addEventListener('mousedown', () => {
+            if (!controls.isLocked) return;
+            
+            const bullet = new THREE.Mesh(
+                new THREE.SphereGeometry(0.1, 8, 8),
+                new THREE.MeshBasicMaterial({ color: 0xffff00 })
+            );
+            bullet.position.copy(camera.position);
+            
+            const direction = new THREE.Vector3();
+            camera.getWorldDirection(direction);
+            bullet.velocity = direction.clone().multiplyScalar(0.5);
+            
+            bullets.push(bullet);
+            scene.add(bullet);
         });
-        window.addEventListener('keyup', (e) => keys[e.code] = false);
-        window.addEventListener('mousedown', () => { if(document.pointerLockElement) shoot(); });
-        window.addEventListener('click', () => {
-            document.body.requestPointerLock();
-            document.getElementById('msg').style.display = 'none';
-        });
 
-        document.addEventListener('mousemove', (e) => {
-            if (document.pointerLockElement === document.body) {
-                camera.rotation.y -= e.movementX * 0.002;
-                camera.rotation.x -= e.movementY * 0.002;
-                camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, camera.rotation.x));
-            }
-        });
-
-        // --- 射撃 & ダメージ ---
-        const raycaster = new THREE.Raycaster();
-        function shoot() {
-            raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-            const botMeshes = bots.map(b => b.mesh);
-            const intersects = raycaster.intersectObjects([...walls, ...botMeshes], true);
-
-            if (intersects.length > 0) {
-                const hit = intersects[0];
-                createTracer(camera.position.clone().sub(new THREE.Vector3(0,0.2,0)), hit.point, 0x00ff00);
-                
-                // Botに当たったか判定（親要素を辿る）
-                let target = hit.object;
-                while(target.parent && !bots.find(b => b.mesh === target)) target = target.parent;
-                
-                const botIdx = bots.findIndex(b => b.mesh === target);
-                if (botIdx !== -1) {
-                    scene.remove(bots[botIdx].mesh);
-                    bots.splice(botIdx, 1);
-                    killCount++;
-                    document.getElementById('kills').innerText = killCount;
-                    setTimeout(spawnBot, 2000);
-                }
-            }
+        // --- 敵の生成 ---
+        function spawnEnemy() {
+            const enemy = new THREE.Mesh(
+                new THREE.BoxGeometry(1, 2, 1),
+                new THREE.MeshStandardMaterial({ color: 0xff0000 })
+            );
+            const angle = Math.random() * Math.PI * 2;
+            const dist = 20 + Math.random() * 10;
+            enemy.position.set(Math.cos(angle) * dist, 1, Math.sin(angle) * dist);
+            enemies.push(enemy);
+            scene.add(enemy);
         }
+        setInterval(spawnEnemy, 2000);
 
-        function damagePlayer(amt) {
-            playerHP -= amt;
-            document.getElementById('hp-text').innerText = Math.max(0, playerHP);
-            document.getElementById('hp-bar').style.width = Math.max(0, playerHP) + "%";
-            if (playerHP <= 0) {
-                alert("GAME OVER! Kills: " + killCount);
-                location.reload();
-            }
-        }
-
-        function createTracer(from, to, color) {
-            const geom = new THREE.BufferGeometry().setFromPoints([from, to]);
-            const line = new THREE.Line(geom, new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.7 }));
-            scene.add(line);
-            setTimeout(() => { scene.remove(line); geom.dispose(); }, 50);
-        }
-
-        // --- ループ ---
+        // --- メインループ ---
         function animate() {
             requestAnimationFrame(animate);
-            const delta = clock.getDelta();
-            
-            // プレイヤー移動
-            const moveDir = new THREE.Vector3();
-            if (keys['KeyW']) moveDir.z -= 1;
-            if (keys['KeyS']) moveDir.z += 1;
-            if (keys['KeyA']) moveDir.x -= 1;
-            if (keys['KeyD']) moveDir.x += 1;
-            moveDir.normalize().applyQuaternion(camera.quaternion);
-            moveDir.y = 0;
-            camera.position.addScaledVector(moveDir, 10 * delta);
 
-            // Botの更新
-            bots.forEach(bot => bot.update(delta, camera.position));
+            if (controls.isLocked) {
+                // 移動処理
+                if (keys['KeyW']) controls.moveForward(moveSpeed);
+                if (keys['KeyS']) controls.moveForward(-moveSpeed);
+                if (keys['KeyA']) controls.moveRight(-moveSpeed);
+                if (keys['KeyD']) controls.moveRight(moveSpeed);
+
+                // 弾の更新
+                for (let i = bullets.length - 1; i >= 0; i--) {
+                    const b = bullets[i];
+                    b.position.add(b.velocity);
+                    if (b.position.length() > 100) {
+                        scene.remove(b);
+                        bullets.splice(i, 1);
+                    }
+                }
+
+                // 敵の更新と当たり判定
+                for (let i = enemies.length - 1; i >= 0; i--) {
+                    const e = enemies[i];
+                    
+                    // プレイヤーの方へ向かってくる
+                    const dir = new THREE.Vector3().subVectors(camera.position, e.position).normalize();
+                    e.position.x += dir.x * 0.03;
+                    e.position.z += dir.z * 0.03;
+
+                    // 弾との判定
+                    for (let j = bullets.length - 1; j >= 0; j--) {
+                        if (e.position.distanceTo(bullets[j].position) < 1) {
+                            scene.remove(e);
+                            enemies.splice(i, 1);
+                            scene.remove(bullets[j]);
+                            bullets.splice(j, 1);
+                            score += 100;
+                            document.getElementById('score').innerText = score;
+                            break;
+                        }
+                    }
+                }
+            }
 
             renderer.render(scene, camera);
         }
+
         animate();
+
+        // リサイズ対応
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
     </script>
 </body>
 </html>
