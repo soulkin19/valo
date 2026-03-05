@@ -2,149 +2,190 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>オンライン銃撃戦〜fire up 3D〜</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>fire up 3D - Multi-Device</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #ba5b1c; font-family: sans-serif; }
+        #setup-ui {
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: rgba(255, 255, 255, 0.9); padding: 20px; border-radius: 10px; text-align: center; z-index: 100;
+        }
         #ui {
             position: absolute; top: 10px; left: 10px; color: white;
-            background: rgba(0,0,0,0.5); padding: 10px; border-radius: 5px;
-            pointer-events: none;
+            background: rgba(0,0,0,0.5); padding: 10px; border-radius: 5px; pointer-events: none; display: none;
+        }
+        #mobile-controls {
+            position: absolute; bottom: 20px; left: 20px; width: 100px; height: 100px;
+            background: rgba(255,255,255,0.3); border-radius: 50%; display: none; touch-action: none;
         }
         #crosshair {
-            position: absolute; top: 50%; left: 50%;
-            width: 10px; height: 10px; border: 2px solid #0f0;
-            border-radius: 50%; transform: translate(-50%, -50%);
-            pointer-events: none;
+            position: absolute; top: 50%; left: 50%; width: 10px; height: 10px;
+            border: 2px solid #0f0; border-radius: 50%; transform: translate(-50%, -50%);
+            pointer-events: none; display: none;
         }
+        button { padding: 10px 20px; font-size: 16px; cursor: pointer; margin: 5px; }
     </style>
 </head>
 <body>
 
+<div id="setup-ui">
+    <h2>fire up 3D</h2>
+    <input type="text" id="nameInput" placeholder="名前を入力" value="guest"><br><br>
+    <button onclick="startGame('pc')">PCで遊ぶ</button>
+    <button onclick="startGame('mobile')">スマホで遊ぶ</button>
+</div>
+
 <div id="ui">
-    <div id="nameDisplay">Player: -</div>
     <div id="hpDisplay">HP: 100</div>
-    <div id="weaponDisplay">Weapon: Handgun</div>
+    <div id="weaponDisplay">Weapon: Handgun (Space/Tap to Fire)</div>
 </div>
 <div id="crosshair"></div>
+<div id="mobile-controls"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/controls/PointerLockControls.js"></script>
 
 <script>
-    // --- 1. 設定と初期化 ---
-    const playerName = prompt("あなたの名前を入力してください", "guest_" + Math.floor(Math.random()*1000)) || "guest";
-    const gameName = prompt("部屋の名前を入力してください（空欄でpublic）") || "public";
-    const pcolor = prompt("色（red, blue, greenなど）", "blue") || "blue";
-    const playerId = Math.random().toString(36).substr(2, 9);
-
-    document.getElementById('nameDisplay').innerText = `Player: ${playerName}`;
-
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0xba5b1c);
-    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 3000);
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    document.body.appendChild(renderer.domElement);
-
-    // --- 2. 操作系（設定完了後に自動ロックを試行） ---
-    const controls = new THREE.PointerLockControls(camera, document.body);
-    
-    // ブラウザの仕様上、ユーザー操作（クリック等）が必要な場合があるため、
-    // 最初の1回だけ画面をクリックしてもらう必要がありますが、それ以降は自動で進みます。
-    window.onload = () => {
-        alert("準備ができました。OKを押した後、画面をクリックして対戦開始です！");
-    };
-
-    // --- 3. ステージ構成（2Dの壁データを反映） ---
-    const wallsData = [
-        { x: 50, y: 50, w: 400, h: 20 },
-        { x: 50, y: 50, w: 20, h: 400 },
-        { x: 500, y: 200, w: 20, h: 300 }
+    let isMobile = false;
+    let playerName, playerId, socket, camera, scene, renderer, controls;
+    const bullets = [];
+    const enemies = {};
+    const walls = [
+        { x: 50, y: 50, w: 400, h: 20 }, { x: 50, y: 50, w: 20, h: 400 },
+        { x: 500, y: 200, w: 20, h: 300 }, { x: 700, y: 400, w: 300, h: 20 },
+        { x: 1000, y: 100, w: 20, h: 400 }, { x: 1200, y: 600, w: 400, h: 20 }
     ];
 
-    const wallMaterial = new THREE.MeshPhongMaterial({ color: 0x808080 });
-    wallsData.forEach(w => {
-        const geo = new THREE.BoxGeometry(w.w, 60, w.h);
-        const mesh = new THREE.Mesh(geo, wallMaterial);
-        // 2Dのx, yを3Dのx, zに変換
-        mesh.position.set(w.x + w.w/2, 30, w.y + w.h/2);
-        scene.add(mesh);
-    });
+    function startGame(device) {
+        isMobile = (device === 'mobile');
+        playerName = document.getElementById('nameInput').value || "guest";
+        playerId = Math.random().toString(36).substr(2, 9);
+        
+        document.getElementById('setup-ui').style.display = 'none';
+        document.getElementById('ui').style.display = 'block';
+        document.getElementById('crosshair').style.display = 'block';
+        if(isMobile) document.getElementById('mobile-controls').style.display = 'block';
 
-    const light = new THREE.HemisphereLight(0xffffff, 0x444444, 1.2);
-    scene.add(light);
-    const grid = new THREE.GridHelper(2000, 50, 0x000000, 0x000000);
-    scene.add(grid);
+        initThree();
+        initNetwork();
+        animate();
+    }
 
-    // --- 4. オンライン同期 (Achex) ---
-    const socket = new WebSocket('wss://cloud.achex.ca/yajusenpaiikisug1');
-    const enemies = {};
+    function initThree() {
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xba5b1c);
+        camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 3000);
+        camera.position.set(100, 20, 100);
 
-    socket.onopen = () => {
-        socket.send(JSON.stringify({auth: playerId, password: "pass"}));
-        socket.send(JSON.stringify({joinHub: gameName}));
-    };
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
 
-    socket.onmessage = (event) => {
-        const json = JSON.parse(event.data);
-        if (!json.msg) return;
-        const data = JSON.parse(json.msg);
+        const light = new THREE.HemisphereLight(0xffffff, 0x444444, 1.2);
+        scene.add(light);
 
-        if (data.id && data.id !== playerId) {
-            if (!enemies[data.id]) {
-                const geo = new THREE.BoxGeometry(20, 40, 20);
-                const mat = new THREE.MeshPhongMaterial({ color: data.color || 'red' });
-                const mesh = new THREE.Mesh(geo, mat);
-                scene.add(mesh);
-                enemies[data.id] = mesh;
-            }
-            enemies[data.id].position.set(data.x, 20, data.z);
+        // 壁の生成
+        const wallMat = new THREE.MeshPhongMaterial({ color: 0x808080 });
+        walls.forEach(w => {
+            const geo = new THREE.BoxGeometry(w.w, 60, w.h);
+            const mesh = new THREE.Mesh(geo, wallMat);
+            mesh.position.set(w.x + w.w/2, 30, w.y + w.h/2);
+            scene.add(mesh);
+        });
+
+        // PC操作設定
+        controls = new THREE.PointerLockControls(camera, document.body);
+        if (!isMobile) {
+            document.body.addEventListener('click', () => controls.lock());
+        } else {
+            // モバイル用の簡易視点移動（画面タッチで回転）
+            document.addEventListener('touchmove', (e) => {
+                const touch = e.touches[0];
+                camera.rotation.y -= (touch.clientX - window.innerWidth/2) * 0.0001;
+            });
         }
-    };
 
-    // --- 5. 移動とループ ---
-    let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
+        // キーイベント
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') fire();
+        });
+        if (isMobile) window.addEventListener('touchstart', fire);
+    }
+
+    function fire() {
+        const bulletGeo = new THREE.SphereGeometry(2, 8, 8);
+        const bulletMat = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+        const bullet = new THREE.Mesh(bulletGeo, bulletMat);
+        
+        bullet.position.copy(camera.position);
+        const dir = new THREE.Vector3();
+        camera.getWorldDirection(dir);
+        
+        const bData = { mesh: bullet, dir: dir.multiplyScalar(10) };
+        bullets.push(bData);
+        scene.add(bullet);
+
+        // 通信で弾丸を共有（簡易化のため位置のみ）
+        socket.send(JSON.stringify({
+            toH: "public",
+            msg: JSON.stringify({ id: playerId, type: "fire", x: camera.position.x, z: camera.position.z, dx: dir.x, dz: dir.z })
+        }));
+    }
+
+    function initNetwork() {
+        socket = new WebSocket('wss://cloud.achex.ca/fireup_3d_room');
+        socket.onopen = () => {
+            socket.send(JSON.stringify({auth: playerId, password: "pass"}));
+            socket.send(JSON.stringify({joinHub: "public"}));
+        };
+        socket.onmessage = (e) => {
+            const data = JSON.parse(JSON.parse(e.data).msg || "{}");
+            if (data.id && data.id !== playerId) {
+                if (!enemies[data.id]) {
+                    const mesh = new THREE.Mesh(new THREE.BoxGeometry(20, 40, 20), new THREE.MeshPhongMaterial({color: 'blue'}));
+                    scene.add(mesh);
+                    enemies[data.id] = mesh;
+                }
+                enemies[data.id].position.set(data.x, 20, data.z);
+            }
+        };
+    }
+
+    let moveF = false, moveB = false, moveL = false, moveR = false;
     document.addEventListener('keydown', (e) => {
-        if (e.code === 'KeyW' || e.code === 'ArrowUp') moveForward = true;
-        if (e.code === 'KeyS' || e.code === 'ArrowDown') moveBackward = true;
-        if (e.code === 'KeyA' || e.code === 'ArrowLeft') moveLeft = true;
-        if (e.code === 'KeyD' || e.code === 'ArrowRight') moveRight = true;
+        if(e.code === 'KeyW') moveF = true; if(e.code === 'KeyS') moveB = true;
+        if(e.code === 'KeyA') moveL = true; if(e.code === 'KeyD') moveR = true;
     });
     document.addEventListener('keyup', (e) => {
-        if (e.code === 'KeyW' || e.code === 'ArrowUp') moveForward = false;
-        if (e.code === 'KeyS' || e.code === 'ArrowDown') moveBackward = false;
-        if (e.code === 'KeyA' || e.code === 'ArrowLeft') moveLeft = false;
-        if (e.code === 'KeyD' || e.code === 'ArrowRight') moveRight = false;
+        if(e.code === 'KeyW') moveF = false; if(e.code === 'KeyS') moveB = false;
+        if(e.code === 'KeyA') moveL = false; if(e.code === 'KeyD') moveR = false;
     });
 
-    const clock = new THREE.Clock();
     function animate() {
         requestAnimationFrame(animate);
-        const delta = clock.getDelta();
+        if (controls && controls.isLocked || isMobile) {
+            const speed = 5;
+            if (moveF) controls.moveForward(speed);
+            if (moveB) controls.moveForward(-speed);
+            if (moveL) controls.moveRight(-speed);
+            if (moveR) controls.moveRight(speed);
 
-        if (controls.isLocked) {
-            const speed = 300 * delta;
-            if (moveForward) controls.moveForward(speed);
-            if (moveBackward) controls.moveForward(-speed);
-            if (moveLeft) controls.moveRight(-speed);
-            if (moveRight) controls.moveRight(speed);
+            // 弾丸の移動
+            bullets.forEach((b, i) => {
+                b.mesh.position.add(b.dir);
+                if (b.mesh.position.distanceTo(camera.position) > 1000) {
+                    scene.remove(b.mesh);
+                    bullets.splice(i, 1);
+                }
+            });
 
-            // 位置を送信
-            if (socket.readyState === WebSocket.OPEN) {
-                socket.send(JSON.stringify({
-                    toH: gameName,
-                    msg: JSON.stringify({
-                        id: playerId,
-                        x: camera.position.x,
-                        z: camera.position.z,
-                        color: pcolor
-                    })
-                }));
+            // 位置送信
+            if (socket && socket.readyState === 1) {
+                socket.send(JSON.stringify({ toH: "public", msg: JSON.stringify({ id: playerId, x: camera.position.x, z: camera.position.z }) }));
             }
         }
-        renderer.render(scene, camera);
+        if(renderer) renderer.render(scene, camera);
     }
-    animate();
 </script>
 </body>
 </html>
