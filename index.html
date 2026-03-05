@@ -3,559 +3,376 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Mobile Flight Combat Sim</title>
+    <title>Pro Flight Combat - Mobile Edition</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Courier New', monospace; user-select: none; -webkit-user-select: none; }
         #game-container { position: relative; width: 100vw; height: 100vh; display: none; }
-        #hud { position: absolute; top: 10px; left: 10px; color: #0f0; pointer-events: none; text-shadow: 1px 1px 2px #000; font-size: 14px; }
-        #joystick-left-container, #joystick-right-container { position: absolute; bottom: 30px; width: 120px; height: 120px; opacity: 0.6; }
-        #joystick-left-container { left: 20px; }
-        #joystick-right-container { right: 20px; }
-        .fire-button { position: absolute; bottom: 180px; width: 60px; height: 60px; background-color: rgba(255, 0, 0, 0.5); border: 2px solid #fff; border-radius: 50%; color: #fff; font-size: 12px; display: flex; align-items: center; justify-content: center; touch-action: none; }
-        #fire-main { right: 90px; }
-        #fire-secondary { right: 20px; background-color: rgba(0, 0, 255, 0.5); }
+        #hud { position: absolute; top: 10px; left: 10px; color: #0f0; pointer-events: none; text-shadow: 1px 1px 2px #000; font-size: 14px; z-index: 5; }
         
-        #menu { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.8); display: flex; flex-direction: column; align-items: center; justify-content: center; color: #fff; z-index: 10; }
-        #menu h1 { margin-bottom: 20px; }
-        #menu h3 { margin-top: 20px; margin-bottom: 5px; }
-        #menu select { padding: 10px; font-size: 16px; margin-bottom: 10px; width: 250px; background: #333; color: #fff; border: 1px solid #777; }
-        #menu button { padding: 15px 30px; font-size: 18px; cursor: pointer; background: #f00; color: #fff; border: none; border-radius: 5px; margin-top: 30px; }
+        /* ジョイスティックを大きく、少し上に配置 */
+        #joystick-left-container, #joystick-right-container { 
+            position: absolute; 
+            bottom: 100px; /* 少し上に配置 */
+            width: 160px;  /* サイズを大きく */
+            height: 160px; 
+            opacity: 0.5; 
+            z-index: 10;
+        }
+        #joystick-left-container { left: 40px; }
+        #joystick-right-container { right: 40px; }
+
+        .fire-button { 
+            position: absolute; 
+            bottom: 280px; /* ジョイスティックの上側に配置 */
+            width: 70px; 
+            height: 70px; 
+            background-color: rgba(255, 0, 0, 0.4); 
+            border: 2px solid #fff; 
+            border-radius: 50%; 
+            color: #fff; 
+            font-size: 12px; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            touch-action: none; 
+            z-index: 10;
+        }
+        #fire-main { right: 120px; }
+        #fire-secondary { right: 30px; background-color: rgba(0, 100, 255, 0.4); }
         
-        #game-over { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255, 0, 0, 0.7); display: none; flex-direction: column; align-items: center; justify-content: center; color: #fff; z-index: 10; text-align: center; }
-        #game-over h1 { font-size: 48px; }
+        #menu, #game-over { 
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
+            display: flex; flex-direction: column; align-items: center; justify-content: center; 
+            color: #fff; z-index: 100; text-align: center;
+        }
+        #menu { background: rgba(0, 0, 0, 0.9); }
+        #game-over { background: rgba(150, 0, 0, 0.8); display: none; }
+        select { padding: 12px; font-size: 16px; margin: 10px; width: 280px; background: #222; color: #fff; border: 1px solid #555; border-radius: 8px; }
+        button { padding: 15px 40px; font-size: 20px; cursor: pointer; background: #0a0; color: #fff; border: none; border-radius: 30px; margin-top: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
     </style>
 </head>
 <body>
 
     <div id="menu">
-        <h1>MOBILE FLIGHT COMBAT</h1>
-        <h3>MAIN WEAPON</h3>
-        <select id="main-weapon-select">
-            <option value="20mm">20mm Cannon (Fast, Low DMG)</option>
-            <option value="50mm">50mm Cannon (Slow, High DMG)</option>
-        </select>
-        <h3>SECONDARY WEAPON</h3>
-        <select id="secondary-weapon-select">
-            <option value="missile">Air-to-Air Missile (Homing)</option>
-        </select>
-        <button id="start-button">START GAME</button>
+        <h1>PRO FLIGHT COMBAT</h1>
+        <p>MOBILE ONLY SIMULATOR</p>
+        <div style="margin: 20px 0;">
+            <label>MAIN:</label><br>
+            <select id="main-weapon-select">
+                <option value="20mm">20mm Cannon (連射型)</option>
+                <option value="50mm">50mm Cannon (重火力型)</option>
+            </select><br>
+            <label>SECONDARY:</label><br>
+            <select id="secondary-weapon-select">
+                <option value="missile">AIM-9 Missile (追尾弾)</option>
+            </select>
+        </div>
+        <button id="start-button">ENGAGE</button>
     </div>
 
     <div id="game-over">
-        <h1>CRASH!</h1>
-        <p>You died.</p>
-        <button onclick="location.reload()">RETRY</button>
+        <h1>MAYDAY! MAYDAY!</h1>
+        <p>MISSION FAILED - AIRCRAFT DESTROYED</p>
+        <button onclick="location.reload()">REDEPLOY</button>
     </div>
 
     <div id="game-container">
         <div id="hud">
-            SPEED: <span id="speed">0</span> km/h<br>
-            ALT: <span id="alt">0</span> m<br>
-            HEALTH: <span id="hp">100</span>%<br>
-            BOT HP: <span id="bot-hp">100</span>%<br>
-            MAIN AMMO: <span id="main-ammo">1000</span><br>
-            SECONDARY: <span id="sec-ammo">4</span><br>
-            TARGET: <span id="target-lock">-</span>
+            SPD: <span id="speed">0</span> km/h | ALT: <span id="alt">0</span> m<br>
+            HP : <span id="hp">100</span>% | BOT: <span id="bot-hp">100</span>%<br>
+            AMMO: <span id="main-ammo">--</span> | SEC: <span id="sec-ammo">--</span><br>
+            LOCK: <span id="target-lock">NO TARGET</span>
         </div>
         
         <div id="joystick-left-container"></div>
         <div id="joystick-right-container"></div>
-        <div id="fire-main" class="fire-button">MAIN</div>
-        <div id="fire-secondary" class="fire-button">SEC</div>
+        <div id="fire-main" class="fire-button">CANNON</div>
+        <div id="fire-secondary" class="fire-button">MISSILE</div>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.10.1/nipplejs.min.js"></script>
 
     <script>
-        // --- 設定 ---
-        const MAIN_WEAPONS = {
-            '20mm': { rate: 0.1, damage: 2, speed: 200, ammo: 1000, spread: 0.01 },
-            '50mm': { rate: 0.3, damage: 15, speed: 150, ammo: 300, spread: 0.02 }
-        };
-        const SECONDARY_WEAPONS = {
-            'missile': { rate: 2, damage: 50, speed: 120, ammo: 4, homingSpeed: 0.04, lockRange: 300, life: 10 }
+        // --- 設定データ ---
+        const WEAPONS = {
+            '20mm': { rate: 0.08, damage: 3, speed: 220, ammo: 1200, spread: 0.015 },
+            '50mm': { rate: 0.4, damage: 25, speed: 180, ammo: 250, spread: 0.01 },
+            'missile': { rate: 2.5, damage: 60, speed: 140, ammo: 6, homing: 0.06, range: 400 }
         };
 
         const PHYSICS = {
-            gravity: 0.005,
-            drag: 0.001,
-            lift: 0.003,
-            thrust: 0.015,
-            mass: 1
+            gravity: 0.006,
+            drag: 0.0008,
+            lift: 0.006, // 上昇しやすく強化
+            thrustPower: 0.02,
+            pitchSens: 0.04,
+            rollSens: 0.05,
+            yawSens: 0.025
         };
 
+        // --- シーン構築 ---
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x87ceeb); // 青空
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 4000);
+        scene.background = new THREE.Color(0x6eb5ff);
+        scene.fog = new THREE.Fog(0x6eb5ff, 500, 2500);
+
+        const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.5, 3000);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setPixelRatio(window.devicePixelRatio);
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.getElementById('game-container').appendChild(renderer.domElement);
 
-        // 照明
         const light = new THREE.DirectionalLight(0xffffff, 1.2);
-        light.position.set(100, 200, 100);
-        scene.add(light);
-        scene.add(new THREE.AmbientLight(0x606060));
+        light.position.set(200, 500, 200);
+        scene.add(light, new THREE.AmbientLight(0x888888));
 
-        // 地面
-        const groundSize = 10000;
-        const groundGeometry = new THREE.PlaneGeometry(groundSize, groundSize, 10, 10);
-        const groundMaterial = new THREE.MeshPhongMaterial({ color: 0x556b2f, side: THREE.DoubleSide, wireframe: false });
-        const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+        // 地面と背景
+        const ground = new THREE.Mesh(
+            new THREE.PlaneGeometry(10000, 10000),
+            new THREE.MeshPhongMaterial({ color: 0x445533 })
+        );
         ground.rotation.x = -Math.PI / 2;
         scene.add(ground);
-        // 地面にグリッド追加
-        const grid = new THREE.GridHelper(groundSize, 100, 0x000000, 0x000000);
-        grid.material.opacity = 0.2;
-        grid.material.transparent = true;
-        scene.add(grid);
+        scene.add(new THREE.GridHelper(5000, 50, 0x000000, 0x222222));
 
-        // --- クラス定義 ---
+        // --- クラス ---
 
-        class Aircraft extends THREE.Group {
-            constructor(color) {
-                super();
-                this.hp = 100;
-                this.maxSpeed = 2.0;
-                this.velocity = new THREE.Vector3(0, 0, -0.5);
-                this.mass = PHYSICS.mass;
-                this.alive = true;
-                
-                // 簡易モデル
-                const body = new THREE.Mesh(new THREE.BoxGeometry(1, 0.6, 4), new THREE.MeshPhongMaterial({color: color}));
-                const wing = new THREE.Mesh(new THREE.BoxGeometry(5, 0.1, 1.2), new THREE.MeshPhongMaterial({color: color}));
-                const rudder = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.5, 0.8), new THREE.MeshPhongMaterial({color: color}));
-                rudder.position.set(0, 0.6, 1.5);
-                this.add(body, wing, rudder);
-                this.position.y = 100;
-
-                // 排気パーティクル
-                this.exhaustSystem = new ParticleSystem(0.05, 1000, 0.1, color === 0x333333 ? 0xaaaaaa : 0xffaaaa, true);
-                this.add(this.exhaustSystem);
-            }
-
-            update(dt) {
-                if (!this.alive) return;
-
-                const thrust = this.thrustVal * PHYSICS.thrust;
-                const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.quaternion);
-                const up = new THREE.Vector3(0, 1, 0).applyQuaternion(this.quaternion);
-
-                const speed = this.velocity.length();
-                const dragForce = this.velocity.clone().normalize().multiplyScalar(-speed * speed * PHYSICS.drag);
-                
-                // 簡易揚力 (ピッチに依存)
-                const pitchAngle = Math.asin(forward.y); // 上を向いている角度
-                const lift = up.multiplyScalar(speed * speed * (PHYSICS.lift + Math.max(0, -pitchAngle * 0.05)));
-
-                const gravity = new THREE.Vector3(0, -PHYSICS.gravity * this.mass, 0);
-
-                // 加速度
-                const force = forward.multiplyScalar(thrust).add(dragForce).add(gravity).add(lift);
-                const accel = force.divideScalar(this.mass);
-                this.velocity.add(accel);
-                
-                // 速度制限
-                if (this.velocity.length() > this.maxSpeed) {
-                    this.velocity.normalize().multiplyScalar(this.maxSpeed);
-                }
-
-                // 移動
-                this.position.add(this.velocity);
-
-                // 回転更新
-                const rotation = new THREE.Vector3(this.pitch * 0.03, this.yaw * 0.02, this.roll * 0.04);
-                this.rotateX(rotation.x);
-                this.rotateY(rotation.y);
-                this.rotateZ(rotation.roll || 0);
-                if (this.roll) this.rotateOnAxis(new THREE.Vector3(0,0,1).applyQuaternion(this.quaternion), -this.roll * 0.05); // ロールでヨーも発生
-
-                // 排気
-                if (this.thrustVal > 0.1) {
-                    const offset = new THREE.Vector3(0, 0, 2).applyQuaternion(this.quaternion);
-                    this.exhaustSystem.addParticle(this.position.clone().add(offset));
-                }
-                this.exhaustSystem.update(dt);
-            }
-
-            die() {
-                this.alive = false;
-                explosionSystem.explode(this.position);
-            }
-        }
-
-        class Player extends Aircraft {
-            constructor() {
-                super(0x333333);
-                this.pitch = 0;
-                this.roll = 0;
-                this.yaw = 0;
-                this.thrustVal = 0.5;
-                this.mainWeapon = null;
-                this.secondaryWeapon = null;
-                this.mainAmmo = 0;
-                this.secondaryAmmo = 0;
-                this.lastMainFireTime = 0;
-                this.lastSecondaryFireTime = 0;
-            }
-
-            fireMain() {
-                const now = performance.now() / 1000;
-                if (this.mainWeapon && this.mainAmmo > 0 && now - this.lastMainFireTime > this.mainWeapon.rate) {
-                    const direction = new THREE.Vector3(
-                        (Math.random() - 0.5) * this.mainWeapon.spread,
-                        (Math.random() - 0.5) * this.mainWeapon.spread,
-                        -1
-                    ).applyQuaternion(this.quaternion).normalize();
-                    const bullet = new Projectile(this.position.clone(), direction, this.mainWeapon.speed, this.mainWeapon.damage, 0x0f0, this);
-                    projectiles.push(bullet);
-                    scene.add(bullet);
-                    this.mainAmmo--;
-                    this.lastMainFireTime = now;
-                }
-            }
-
-            fireSecondary() {
-                const now = performance.now() / 1000;
-                if (this.secondaryWeapon && this.secondaryAmmo > 0 && now - this.lastSecondaryFireTime > this.secondaryWeapon.rate) {
-                    const target = findLockTarget(this.position, this.quaternion, this.secondaryWeapon.lockRange);
-                    const direction = new THREE.Vector3(0, 0, -1).applyQuaternion(this.quaternion).normalize();
-                    const missile = new Missile(this.position.clone(), direction, this.secondaryWeapon.speed, this.secondaryWeapon.damage, this, target);
-                    projectiles.push(missile);
-                    scene.add(missile);
-                    this.secondaryAmmo--;
-                    this.lastSecondaryFireTime = now;
-                }
-            }
-        }
-
-        class Bot extends Aircraft {
-            constructor() {
-                super(0xff0000);
-                this.maxSpeed = 1.2;
-                this.thrustVal = 0.4;
-                this.mainWeapon = MAIN_WEAPONS['20mm'];
-                this.lastFireTime = 0;
-                this.alive = true;
-            }
-            
-            update(dt) {
-                if (!this.alive) return;
-                
-                // AI: 簡易追跡
-                const directionToPlayer = player.position.clone().sub(this.position).normalize();
-                this.lookAt(this.position.clone().add(directionToPlayer));
-                this.thrustVal = 0.5;
-
-                // 射撃AI
-                const distance = this.position.distanceTo(player.position);
-                const now = performance.now() / 1000;
-                if (distance < 300 && now - this.lastFireTime > this.mainWeapon.rate && Math.random() < 0.1) {
-                    const bullet = new Projectile(this.position.clone(), directionToPlayer, this.mainWeapon.speed, this.mainWeapon.damage, 0xf00, this);
-                    projectiles.push(bullet);
-                    scene.add(bullet);
-                    this.lastFireTime = now;
-                }
-
-                super.update(dt);
-            }
-        }
-
-        class Projectile extends THREE.Mesh {
-            constructor(position, direction, speed, damage, color, owner, size=0.2) {
-                const geometry = new THREE.BoxGeometry(size, size, 5);
-                const material = new THREE.MeshBasicMaterial({ color: color });
-                super(geometry, material);
-                this.position.copy(position);
-                this.lookAt(position.clone().add(direction));
-                this.velocity = direction.multiplyScalar(speed);
-                this.damage = damage;
-                this.owner = owner;
-                this.alive = true;
-                this.life = 5; // 生命時間（秒）
-                this.birthTime = performance.now() / 1000;
-            }
-
-            update(dt) {
-                if (!this.alive) return;
-                this.position.add(this.velocity.clone().multiplyScalar(dt));
-                
-                // 生命確認
-                const now = performance.now() / 1000;
-                if (now - this.birthTime > this.life) this.alive = false;
-                
-                // 激突判定（簡易、地面）
-                if (this.position.y < 0) this.alive = false;
-            }
-        }
-
-        class Missile extends Projectile {
-            constructor(position, direction, speed, damage, owner, target) {
-                super(position, direction, speed, damage, 0x00f, owner, 0.4);
-                this.target = target;
-                this.life = SECONDARY_WEAPONS['missile'].life;
-                this.homingSpeed = SECONDARY_WEAPONS['missile'].homingSpeed;
-                this.baseSpeed = speed;
-                // ミサイル用モデル
-                this.geometry = new THREE.CylinderGeometry(0.2, 0.2, 3, 8);
-                this.rotation.x = Math.PI / 2;
-                this.material = new THREE.MeshPhongMaterial({ color: 0xcccccc });
-                
-                // 排気パーティクル
-                this.exhaustSystem = new ParticleSystem(0.08, 500, 0.2, 0xffff00, true);
-                this.add(this.exhaustSystem);
-            }
-
-            update(dt) {
-                if (!this.alive) return;
-                
-                if (this.target && this.target.alive) {
-                    // 誘導
-                    const directionToTarget = this.target.position.clone().sub(this.position).normalize();
-                    const currentDir = this.velocity.clone().normalize();
-                    const newDir = currentDir.lerp(directionToTarget, this.homingSpeed).normalize();
-                    this.velocity = newDir.multiplyScalar(this.baseSpeed);
-                    this.lookAt(this.position.clone().add(newDir));
-                }
-                
-                super.update(dt);
-                this.exhaustSystem.addParticle(this.position);
-                this.exhaustSystem.update(dt);
-            }
-        }
-
-        class ParticleSystem extends THREE.Group {
-            constructor(size, maxParticles, life, color, additive=false) {
-                super();
+        class ParticleSystem {
+            constructor(color, size = 0.5) {
+                this.group = new THREE.Group();
                 this.particles = [];
-                this.geometry = new THREE.SphereGeometry(size, 8, 8);
-                this.material = new THREE.MeshBasicMaterial({ color: color, transparent: true, opacity: 1 });
-                if (additive) this.material.blending = THREE.AdditiveBlending;
-                this.maxParticles = maxParticles;
-                this.life = life;
+                this.mat = new THREE.MeshBasicMaterial({ color: color, transparent: true, blending: THREE.AdditiveBlending });
+                this.geo = new THREE.SphereGeometry(size, 4, 4);
+                scene.add(this.group);
             }
-
-            addParticle(position) {
-                if (this.particles.length >= this.maxParticles) {
-                    const p = this.particles.shift();
-                    p.alive = false;
-                    this.remove(p);
-                }
-                const p = new THREE.Mesh(this.geometry, this.material.clone());
-                p.position.copy(position);
-                p.alive = true;
-                p.birthTime = performance.now() / 1000;
-                p.velocity = new THREE.Vector3((Math.random()-0.5)*0.1, (Math.random()-0.5)*0.1, (Math.random()-0.5)*0.1);
+            emit(pos, vel, life = 1.0) {
+                const p = new THREE.Mesh(this.geo, this.mat.clone());
+                p.position.copy(pos);
+                p.userData = { vel: vel, life: life, maxLife: life };
                 this.particles.push(p);
-                this.add(p);
+                this.group.add(p);
             }
-
             update(dt) {
-                const now = performance.now() / 1000;
                 for (let i = this.particles.length - 1; i >= 0; i--) {
                     const p = this.particles[i];
-                    p.position.add(p.velocity.clone().multiplyScalar(dt));
-                    const age = now - p.birthTime;
-                    p.material.opacity = 1 - (age / this.life);
-                    if (age > this.life) {
-                        this.remove(p);
+                    p.position.add(p.userData.vel.clone().multiplyScalar(dt * 60));
+                    p.userData.life -= dt;
+                    p.material.opacity = p.userData.life / p.userData.maxLife;
+                    if (p.userData.life <= 0) {
+                        this.group.remove(p);
                         this.particles.splice(i, 1);
                     }
                 }
             }
-            
-            explode(position) {
-                for(let i=0; i<30; i++) {
-                    this.addParticle(position.clone());
+        }
+
+        const smokeEffect = new ParticleSystem(0xffffff, 0.3);
+        const fireEffect = new ParticleSystem(0xffaa00, 0.8);
+
+        class Airplane extends THREE.Group {
+            constructor(color) {
+                super();
+                this.hp = 100;
+                this.vel = new THREE.Vector3(0, 0, -0.6);
+                this.alive = true;
+                this.thrust = 0.5;
+                
+                // 機体モデル
+                const body = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.4, 4, 8), new THREE.MeshPhongMaterial({color: color}));
+                body.rotation.x = Math.PI / 2;
+                const wing = new THREE.Mesh(new THREE.BoxGeometry(6, 0.05, 1.5), new THREE.MeshPhongMaterial({color: color}));
+                const tail = new THREE.Mesh(new THREE.BoxGeometry(2, 0.05, 0.8), new THREE.MeshPhongMaterial({color: color}));
+                tail.position.z = 1.6;
+                this.add(body, wing, tail);
+                this.position.y = 150;
+            }
+
+            updatePhysics(dt, pInput, rInput, yInput) {
+                if (!this.alive) return;
+
+                // 入力による回転
+                this.rotateX(pInput * PHYSICS.pitchSens);
+                this.rotateZ(rInput * PHYSICS.rollSens);
+                this.rotateY(yInput * PHYSICS.yawSens);
+
+                const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.quaternion);
+                const up = new THREE.Vector3(0, 1, 0).applyQuaternion(this.quaternion);
+                const speed = this.vel.length();
+
+                // 物理計算
+                const thrustForce = forward.clone().multiplyScalar(this.thrust * PHYSICS.thrustPower);
+                const gravity = new THREE.Vector3(0, -PHYSICS.gravity, 0);
+                const dragForce = this.vel.clone().multiplyScalar(-speed * PHYSICS.drag);
+                
+                // 揚力計算: 機首が上がっているほど、速度があるほど浮く
+                const liftAmount = speed * speed * PHYSICS.lift;
+                const liftForce = up.clone().multiplyScalar(liftAmount);
+
+                this.vel.add(thrustForce).add(gravity).add(dragForce).add(liftForce);
+                this.position.add(this.vel);
+
+                // 排気煙
+                if (this.thrust > 0.2) {
+                    smokeEffect.emit(this.position.clone().add(forward.clone().multiplyScalar(-2)), new THREE.Vector3(0,0,0), 0.5);
                 }
+
+                if (this.position.y <= 0) this.crash();
+            }
+
+            crash() {
+                if (!this.alive) return;
+                this.alive = false;
+                for(let i=0; i<20; i++) fireEffect.emit(this.position, new THREE.Vector3(Math.random()-0.5, Math.random(), Math.random()-0.5).multiplyScalar(0.5), 2);
             }
         }
 
-
-        // --- 初期化 & 変数 ---
-
-        let player;
-        let bot;
-        let projectiles = [];
-        let inputLeft = { x: 0, y: 0 }; // ピッチ、ロール
-        let inputRight = { x: 0, y: 0 }; // ヨー、スロットル
-        let isMainFiring = false;
-        let isSecondaryFiring = false;
-        let explosionSystem;
-        let gameActive = false;
+        // --- ゲーム管理 ---
+        let player, bot;
+        let bullets = [];
+        let gameRunning = false;
         let lastTime = 0;
+        let controls = { p: 0, r: 0, y: 0, t: 0.5 };
+        let isFiringMain = false, isFiringSec = false;
 
-        // モバイル操作設定 (NippleJS)
-        function setupJoysticks() {
-            const leftManager = nipplejs.create({
-                zone: document.getElementById('joystick-left-container'),
-                mode: 'static',
-                position: { left: '50%', top: '50%' },
-                color: 'white',
-                size: 100
-            });
-            leftManager.on('move', (evt, data) => {
-                inputLeft = { x: data.vector.x, y: data.vector.y };
-            });
-            leftManager.on('end', () => inputLeft = { x: 0, y: 0 });
+        function initJoysticks() {
+            const left = nipplejs.create({ zone: document.getElementById('joystick-left-container'), mode: 'static', position: {left: '50%', top: '50%'}, color: 'white', size: 140 });
+            left.on('move', (e, d) => { controls.r = -d.vector.x; controls.p = d.vector.y; });
+            left.on('end', () => { controls.r = 0; controls.p = 0; });
 
-            const rightManager = nipplejs.create({
-                zone: document.getElementById('joystick-right-container'),
-                mode: 'static',
-                position: { left: '50%', top: '50%' },
-                color: 'white',
-                size: 100
-            });
-            rightManager.on('move', (evt, data) => {
-                inputRight = { x: data.vector.x, y: data.vector.y };
-            });
-            rightManager.on('end', () => inputRight = { x: 0, y: 0 });
+            const right = nipplejs.create({ zone: document.getElementById('joystick-right-container'), mode: 'static', position: {left: '50%', top: '50%'}, color: 'white', size: 140 });
+            right.on('move', (e, d) => { controls.y = -d.vector.x; controls.t = Math.max(0.1, d.vector.y + 0.5); });
+            right.on('end', () => { controls.y = 0; });
 
-            // 射撃ボタン
-            document.getElementById('fire-main').addEventListener('touchstart', (e) => { e.preventDefault(); isMainFiring = true; });
-            document.getElementById('fire-main').addEventListener('touchend', () => isMainFiring = false);
-            document.getElementById('fire-secondary').addEventListener('touchstart', (e) => { e.preventDefault(); isSecondaryFiring = true; });
-            document.getElementById('fire-secondary').addEventListener('touchend', () => isSecondaryFiring = false);
+            const fMain = document.getElementById('fire-main');
+            const fSec = document.getElementById('fire-secondary');
+            fMain.ontouchstart = (e) => { e.preventDefault(); isFiringMain = true; };
+            fMain.ontouchend = () => isFiringMain = false;
+            fSec.ontouchstart = (e) => { e.preventDefault(); isFiringSec = true; };
+            fSec.ontouchend = () => isFiringSec = false;
         }
 
-        // ターゲットロックオン機能
-        function findLockTarget(pos, quat, range) {
-            const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(quat);
-            let bestTarget = null;
-            let bestAngle = Math.PI; // 最大180度
-            
-            // ボットが対象
-            const direction = bot.position.clone().sub(pos);
-            const distance = direction.length();
-            if (distance < range && bot.alive) {
-                const angle = forward.angleTo(direction.normalize());
-                if (angle < Math.PI / 6) { // 前方30度
-                    return bot;
-                }
-            }
-            return null;
+        function spawnBullet(owner, weapon, isMissile = false) {
+            const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(owner.quaternion);
+            const b = {
+                mesh: new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, isMissile ? 2 : 4), new THREE.MeshBasicMaterial({ color: isMissile ? 0xff0000 : 0xffff00 })),
+                vel: dir.clone().multiplyScalar(weapon.speed * 0.01),
+                damage: weapon.damage,
+                owner: owner,
+                life: isMissile ? 8 : 3,
+                isMissile: isMissile,
+                target: isMissile ? bot : null
+            };
+            b.mesh.position.copy(owner.position);
+            b.mesh.lookAt(owner.position.clone().add(dir));
+            scene.add(b.mesh);
+            bullets.push(b);
         }
 
-        // ゲーム開始
         function startGame() {
-            gameActive = true;
             document.getElementById('menu').style.display = 'none';
             document.getElementById('game-container').style.display = 'block';
             
-            player = new Player();
-            bot = new Bot();
+            player = new Airplane(0x333333);
+            player.weaponM = WEAPONS[document.getElementById('main-weapon-select').value];
+            player.weaponS = WEAPONS['missile'];
+            player.ammoM = player.weaponM.ammo;
+            player.ammoS = player.weaponS.ammo;
+            player.lastM = 0; player.lastS = 0;
             scene.add(player);
+
+            bot = new Airplane(0xcc0000);
+            bot.position.set(0, 200, -500);
             scene.add(bot);
-            
-            // 武器選択
-            const mainSelect = document.getElementById('main-weapon-select');
-            const secSelect = document.getElementById('secondary-weapon-select');
-            player.mainWeapon = MAIN_WEAPONS[mainSelect.value];
-            player.secondaryWeapon = SECONDARY_WEAPONS[secSelect.value];
-            player.mainAmmo = player.mainWeapon.ammo;
-            player.secondaryAmmo = player.secondaryWeapon.ammo;
-            
-            explosionSystem = new ParticleSystem(1, 50, 1.5, 0xffaa00, true);
-            scene.add(explosionSystem);
-            
-            setupJoysticks();
+
+            initJoysticks();
+            gameRunning = true;
             lastTime = performance.now();
-            animate();
+            loop();
         }
 
-
-        // --- メインループ ---
-
-        function animate() {
-            if (!gameActive) return;
+        function loop() {
+            if (!gameRunning) return;
             const now = performance.now();
-            const dt = Math.min((now - lastTime) / 1000, 0.1); // deltaTime (秒), 最大0.1s
+            const dt = Math.min((now - lastTime) / 1000, 0.1);
             lastTime = now;
 
-            // 1. プレイヤー入力処理
-            player.pitch = inputLeft.y; // ジョイスティック上下でピッチ
-            player.roll = -inputLeft.x;  // ジョイスティック左右でロール
-            player.yaw = -inputRight.x;  // 右ジョイスティック左右でヨー
-            player.thrustVal = Math.min(Math.max(inputRight.y * 1.5, 0), 1.0); // 右ジョイスティック上下でスロットル (0〜1)
+            // プレイヤー更新
+            player.thrust = controls.t;
+            player.updatePhysics(dt, controls.p, controls.r, controls.y);
+
+            // 射撃
+            if (isFiringMain && now - player.lastM > player.weaponM.rate * 1000 && player.ammoM > 0) {
+                spawnBullet(player, player.weaponM);
+                player.lastM = now; player.ammoM--;
+            }
+            if (isFiringSec && now - player.lastS > player.weaponS.rate * 1000 && player.ammoS > 0) {
+                spawnBullet(player, player.weaponS, true);
+                player.lastS = now; player.ammoS--;
+            }
+
+            // ボットAI (簡易)
+            const toPlayer = player.position.clone().sub(bot.position).normalize();
+            bot.quaternion.slerp(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,0,-1), toPlayer), 0.02);
+            bot.updatePhysics(dt, 0, 0, 0);
+
+            // 弾丸更新 & 当たり判定
+            for (let i = bullets.length - 1; i >= 0; i--) {
+                const b = bullets[i];
+                if (b.isMissile && b.target.alive) {
+                    const toT = b.target.position.clone().sub(b.mesh.position).normalize();
+                    b.vel.lerp(toT.multiplyScalar(0.8), 0.05);
+                    b.mesh.lookAt(b.mesh.position.clone().add(b.vel));
+                }
+                b.mesh.position.add(b.vel);
+                b.life -= dt;
+
+                // ヒット判定
+                const dist = b.mesh.position.distanceTo(b.owner === player ? bot.position : player.position);
+                if (dist < 5) {
+                    const victim = b.owner === player ? bot : player;
+                    victim.hp -= b.damage;
+                    b.life = 0;
+                    if (victim.hp <= 0) victim.crash();
+                }
+
+                if (b.life <= 0) {
+                    scene.remove(b.mesh);
+                    bullets.splice(i, 1);
+                }
+            }
+
+            // スプリングカメラ (滑らかな追従)
+            const idealOffset = new THREE.Vector3(0, 5, 15).applyQuaternion(player.quaternion);
+            const cameraPos = player.position.clone().add(idealOffset);
+            camera.position.lerp(cameraPos, 0.1);
+            camera.lookAt(player.position.clone().add(new THREE.Vector3(0, 0, -10).applyQuaternion(player.quaternion)));
+
+            // エフェクト & HUD
+            smokeEffect.update(dt);
+            fireEffect.update(dt);
             
-            if (isMainFiring) player.fireMain();
-            if (isSecondaryFiring) player.fireSecondary();
-
-            // 2. 更新
-            player.update(dt);
-            bot.update(dt);
-            for(let p of projectiles) p.update(dt);
-            explosionSystem.update(dt);
-
-            // 3. カメラ追従 (三人称)
-            const relativeCameraOffset = new THREE.Vector3(0, 3, 10);
-            const cameraOffset = relativeCameraOffset.applyMatrix4(player.matrixWorld);
-            camera.position.lerp(cameraOffset, 0.1);
-            camera.lookAt(player.position.clone().add(new THREE.Vector3(0, 1, -20).applyQuaternion(player.quaternion)));
-
-            // 4. 当たり判定 & ゲーム状態
-            for (let i = projectiles.length - 1; i >= 0; i--) {
-                const p = projectiles[i];
-                if (!p.alive) {
-                    scene.remove(p);
-                    projectiles.splice(i, 1);
-                    continue;
-                }
-
-                // 弾丸 vs ボット
-                if (p.owner === player && bot.alive && p.position.distanceTo(bot.position) < 2) {
-                    bot.hp -= p.damage;
-                    p.alive = false;
-                    if (bot.hp <= 0) bot.die();
-                }
-
-                // 弾丸 vs プレイヤー
-                if (p.owner === bot && player.alive && p.position.distanceTo(player.position) < 2) {
-                    player.hp -= p.damage;
-                    p.alive = false;
-                    if (player.hp <= 0) player.die();
-                }
-            }
-
-            // 地面激突判定
-            if (player.alive && player.position.y <= 0.5) {
-                player.die();
-                gameActive = false;
-                document.getElementById('game-over').style.display = 'flex';
-                document.getElementById('hud').style.display = 'none';
-            }
-            if (bot.alive && bot.position.y <= 0.5) {
-                bot.die();
-            }
-
-            // 5. HUD更新
-            document.getElementById('speed').innerText = (player.velocity.length() * 360).toFixed(0);
+            document.getElementById('speed').innerText = (player.vel.length() * 400).toFixed(0);
             document.getElementById('alt').innerText = player.position.y.toFixed(0);
             document.getElementById('hp').innerText = Math.max(0, player.hp).toFixed(0);
-            document.getElementById('bot-hp').innerText = bot.alive ? Math.max(0, bot.hp).toFixed(0) : "0 (Dead)";
-            document.getElementById('main-ammo').innerText = player.mainAmmo;
-            document.getElementById('sec-ammo').innerText = player.secondaryAmmo;
-            
-            // ターゲットロック HUD
-            const target = findLockTarget(player.position, player.quaternion, SECONDARY_WEAPONS['missile'].lockRange);
-            document.getElementById('target-lock').innerText = target ? `BOT (${target.hp}%)` : '-';
-            document.getElementById('target-lock').style.color = target ? 'red' : '#0f0';
+            document.getElementById('bot-hp').innerText = bot.alive ? Math.max(0, bot.hp).toFixed(0) : "DOWN";
+            document.getElementById('main-ammo').innerText = player.ammoM;
+            document.getElementById('sec-ammo').innerText = player.ammoS;
+
+            if (!player.alive) {
+                gameRunning = false;
+                setTimeout(() => document.getElementById('game-over').style.display = 'flex', 1500);
+            }
 
             renderer.render(scene, camera);
-            requestAnimationFrame(animate);
+            requestAnimationFrame(loop);
         }
 
-        // リサイズ対応
-        window.addEventListener('resize', () => {
+        document.getElementById('start-button').onclick = startGame;
+        window.onresize = () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
-        });
-
-        // 開始ボタン
-        document.getElementById('start-button').addEventListener('click', startGame);
-
+        };
     </script>
 </body>
 </html>
