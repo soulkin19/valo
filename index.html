@@ -2,152 +2,143 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Retro Flight Shooter</title>
+    <title>3D FPS Online with Achex</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; }
-        #ui { position: absolute; top: 20px; left: 20px; color: #0f0; text-shadow: 2px 2px #000; pointer-events: none; }
-        #msg { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: red; font-size: 40px; display: none; }
+        body { margin: 0; overflow: hidden; background-color: #000; font-family: sans-serif; }
+        #crosshair {
+            position: absolute; top: 50%; left: 50%;
+            width: 20px; height: 20px;
+            border: 2px solid white; border-radius: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+        }
+        #instructions {
+            position: absolute; top: 20px; left: 20px;
+            color: white; background: rgba(0,0,0,0.5); padding: 10px;
+        }
     </style>
 </head>
 <body>
-    <div id="ui">SCORE: <span id="score">0</span></div>
-    <div id="msg">CRASHED!</div>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.min.js"></script>
-    <script>
-        let scene, camera, renderer, player, clock;
-        let buildings = [], bullets = [], targets = [], particles = [];
-        let score = 0, isDead = false;
-        const speed = 0.5;
 
-        init();
-        animate();
+<div id="crosshair"></div>
+<div id="instructions">画面クリックで開始 (WASDで移動、クリックで発砲)</div>
 
-        function init() {
-            scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x000033);
-            scene.fog = new THREE.Fog(0x000033, 10, 150);
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/controls/PointerLockControls.js"></script>
+<script src="https://achex.ca/js/achex.js"></script>
 
-            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-            renderer = new THREE.WebGLRenderer({ antialias: true });
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            document.body.appendChild(renderer.domElement);
+<script>
+    // --- 1. 初期設定 ---
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x87ceeb); // 空の色
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
 
-            const light = new THREE.DirectionalLight(0xffffff, 1);
-            light.position.set(5, 10, 5);
-            scene.add(light, new THREE.AmbientLight(0x404040));
+    // --- 2. 照明と地面 ---
+    const light = new THREE.HemisphereLight(0xffffff, 0x444444, 1);
+    scene.add(light);
 
-            // プレイヤー(機体)
-            const shipGeo = new THREE.ConeGeometry(0.5, 2, 4);
-            const shipMat = new THREE.MeshPhongMaterial({ color: 0x00ff00, flatShading: true });
-            player = new THREE.Mesh(shipGeo, shipMat);
-            player.rotation.x = Math.PI / 2;
-            scene.add(player);
+    const grid = new THREE.GridHelper(100, 50);
+    scene.add(grid);
 
-            // ビル群の生成
-            for (let i = 0; i < 60; i++) {
-                const h = Math.random() * 30 + 10;
-                const bGeo = new THREE.BoxGeometry(5, h, 5);
-                const bMat = new THREE.MeshPhongMaterial({ color: 0x444466 });
-                const b = new THREE.Mesh(bGeo, bMat);
-                b.position.set(Math.random() * 100 - 50, h / 2, -Math.random() * 500);
-                scene.add(b);
-                buildings.push(b);
-            }
+    // --- 3. プレイヤーと操作 ---
+    const controls = new THREE.PointerLockControls(camera, document.body);
+    document.body.addEventListener('click', () => controls.lock());
 
-            // ターゲット
-            for (let i = 0; i < 10; i++) spawnTarget();
+    let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
+    const velocity = new THREE.Vector3();
+    const direction = new THREE.Vector3();
 
-            clock = new THREE.Clock();
+    const onKeyDown = (e) => {
+        switch (e.code) {
+            case 'KeyW': moveForward = true; break;
+            case 'KeyA': moveLeft = true; break;
+            case 'KeyS': moveBackward = true; break;
+            case 'KeyD': moveRight = true; break;
+        }
+    };
+    const onKeyUp = (e) => {
+        switch (e.code) {
+            case 'KeyW': moveForward = false; break;
+            case 'KeyA': moveLeft = false; break;
+            case 'KeyS': moveBackward = false; break;
+            case 'KeyD': moveRight = false; break;
+        }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    document.addEventListener('keyup', onKeyUp);
 
-            // 操作
-            window.addEventListener('mousemove', (e) => {
-                if (isDead) return;
-                player.position.x = (e.clientX / window.innerWidth) * 40 - 20;
-                player.position.y = -(e.clientY / window.innerHeight) * 20 + 20;
-            });
+    // --- 4. オンライン同期 (Achex) ---
+    const otherPlayers = {};
+    const myId = "player_" + Math.floor(Math.random() * 100000);
+    
+    // Achexサーバーへの接続
+    const net = new Achex("wss://achex.ca:4010");
+    
+    net.on('ready', () => {
+        net.join("fps_room_123"); // 任意のルーム名
+    });
 
-            window.addEventListener('mousedown', shoot);
+    net.on('message', (msg) => {
+        if (msg.auth === myId) return;
+
+        // 他プレイヤーの作成と更新
+        if (!otherPlayers[msg.auth]) {
+            const geo = new THREE.BoxGeometry(1, 2, 1);
+            const mat = new THREE.MeshPhongMaterial({ color: 0xff0000 });
+            const mesh = new THREE.Mesh(geo, mat);
+            scene.add(mesh);
+            otherPlayers[msg.auth] = mesh;
+        }
+        
+        if (msg.type === "move") {
+            otherPlayers[msg.auth].position.set(msg.x, msg.y - 1, msg.z);
+        }
+    });
+
+    // --- 5. 更新ループ ---
+    const clock = new THREE.Clock();
+
+    function animate() {
+        requestAnimationFrame(animate);
+        const delta = clock.getDelta();
+
+        if (controls.isLocked) {
+            velocity.x -= velocity.x * 10.0 * delta;
+            velocity.z -= velocity.z * 10.0 * delta;
+
+            direction.z = Number(moveForward) - Number(moveBackward);
+            direction.x = Number(moveRight) - Number(moveLeft);
+            direction.normalize();
+
+            if (moveForward || moveBackward) velocity.z -= direction.z * 100.0 * delta;
+            if (moveLeft || moveRight) velocity.x -= direction.x * 100.0 * delta;
+
+            controls.moveRight(-velocity.x * delta);
+            controls.moveForward(-velocity.z * delta);
+
+            // 自分の位置を送信
+            net.send({
+                type: "move",
+                x: camera.position.x,
+                y: camera.position.y,
+                z: camera.position.z,
+                auth: myId
+            }, "fps_room_123");
         }
 
-        function spawnTarget() {
-            const tGeo = new THREE.OctahedronGeometry(1.5);
-            const tMat = new THREE.MeshBasicMaterial({ color: 0xff0000, wireframe: true });
-            const t = new THREE.Mesh(tGeo, tMat);
-            t.position.set(Math.random() * 80 - 40, Math.random() * 20 + 5, player.position.z - 200);
-            scene.add(t);
-            targets.push(t);
-        }
+        renderer.render(scene, camera);
+    }
+    animate();
 
-        function shoot() {
-            if (isDead) return;
-            const bGeo = new THREE.BoxGeometry(0.2, 0.2, 2);
-            const bMat = new THREE.MeshBasicMaterial({ color: 0xffff00 });
-            const b = new THREE.Mesh(bGeo, bMat);
-            b.position.copy(player.position);
-            scene.add(b);
-            bullets.push(b);
-        }
-
-        function explode(pos, color) {
-            for (let i = 0; i < 20; i++) {
-                const pGeo = new THREE.BoxGeometry(0.3, 0.3, 0.3);
-                const pMat = new THREE.MeshBasicMaterial({ color: color });
-                const p = new THREE.Mesh(pGeo, pMat);
-                p.position.copy(pos);
-                p.userData.velocity = new THREE.Vector3(Math.random()-0.5, Math.random()-0.5, Math.random()-0.5).multiplyScalar(0.5);
-                scene.add(p);
-                particles.push(p);
-            }
-        }
-
-        function animate() {
-            requestAnimationFrame(animate);
-            if (!isDead) {
-                player.position.z -= speed;
-                camera.position.set(player.position.x, player.position.y + 2, player.position.z + 10);
-                camera.lookAt(player.position);
-
-                // 衝突判定（ビル）
-                const playerBox = new THREE.Box3().setFromObject(player);
-                buildings.forEach(b => {
-                    if (playerBox.intersectsBox(new THREE.Box3().setFromObject(b))) {
-                        isDead = true;
-                        explode(player.position, 0xffaa00);
-                        document.getElementById('msg').style.display = 'block';
-                    }
-                });
-            }
-
-            // 弾の移動と敵との判定
-            bullets.forEach((b, i) => {
-                b.position.z -= 2;
-                targets.forEach((t, ti) => {
-                    if (b.position.distanceTo(t.position) < 3) {
-                        explode(t.position, 0xff0000);
-                        scene.remove(t); targets.splice(ti, 1);
-                        scene.remove(b); bullets.splice(i, 1);
-                        score += 100;
-                        document.getElementById('score').innerText = score;
-                        spawnTarget();
-                    }
-                });
-                if (b.position.z < player.position.z - 200) {
-                    scene.remove(b); bullets.splice(i, 1);
-                }
-            });
-
-            // パーティクル更新
-            particles.forEach((p, i) => {
-                p.position.add(p.userData.velocity);
-                p.scale.multiplyScalar(0.95);
-                if (p.scale.x < 0.01) {
-                    scene.remove(p); particles.splice(i, 1);
-                }
-            });
-
-            renderer.render(scene, camera);
-        }
-    </script>
+    // ウィンドウリサイズ対応
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+</script>
 </body>
 </html>
