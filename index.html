@@ -2,103 +2,118 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>3D FPS Online with Achex</title>
+    <title>オンライン銃撃戦〜fire up 3D〜</title>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #000; font-family: sans-serif; }
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        #ui {
+            position: absolute; top: 10px; left: 10px; color: white;
+            font-family: sans-serif; pointer-events: none;
+        }
         #crosshair {
             position: absolute; top: 50%; left: 50%;
-            width: 20px; height: 20px;
-            border: 2px solid white; border-radius: 50%;
-            transform: translate(-50%, -50%);
+            width: 20px; height: 20px; border: 2px solid #0f0;
+            border-radius: 50%; transform: translate(-50%, -50%);
             pointer-events: none;
-        }
-        #instructions {
-            position: absolute; top: 20px; left: 20px;
-            color: white; background: rgba(0,0,0,0.5); padding: 10px;
         }
     </style>
 </head>
 <body>
 
+<div id="ui">
+    <div id="hpDisplay">HP: 100</div>
+    <div id="weaponDisplay">Weapon: Handgun (1-5 key)</div>
+    <div id="status">Click to Start</div>
+</div>
 <div id="crosshair"></div>
-<div id="instructions">画面クリックで開始 (WASDで移動、クリックで発砲)</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/controls/PointerLockControls.js"></script>
-<script src="https://achex.ca/js/achex.js"></script>
 
 <script>
-    // --- 1. 初期設定 ---
+    // --- 基本設定 ---
+    const playerName = prompt("名前を入力してください", "guest_") || "guest";
+    const gameName = prompt("部屋名（空欄でpublic）") || "public";
+    const playerId = Math.random().toString(36).substr(2, 9);
+
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x87ceeb); // 空の色
-    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    scene.background = new THREE.Color(0xba5b1c); // 元の背景色を継承
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     document.body.appendChild(renderer.domElement);
 
-    // --- 2. 照明と地面 ---
-    const light = new THREE.HemisphereLight(0xffffff, 0x444444, 1);
-    scene.add(light);
-
-    const grid = new THREE.GridHelper(100, 50);
-    scene.add(grid);
-
-    // --- 3. プレイヤーと操作 ---
+    // --- 操作系 ---
     const controls = new THREE.PointerLockControls(camera, document.body);
-    document.body.addEventListener('click', () => controls.lock());
+    document.addEventListener('click', () => controls.lock());
 
-    let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
-    const velocity = new THREE.Vector3();
-    const direction = new THREE.Vector3();
+    // --- 地面と壁 (2Dのwallsデータを元に作成可能) ---
+    const grid = new THREE.GridHelper(2000, 50);
+    scene.add(grid);
+    
+    // サンプルの壁（提示されたwallsの一部を3D化）
+    function createWall(x, z, w, d) {
+        const geo = new THREE.BoxGeometry(w, 50, d);
+        const mat = new THREE.MeshPhongMaterial({ color: 0x808080 });
+        const wall = new THREE.Mesh(geo, mat);
+        wall.position.set(x + w/2, 25, z + d/2);
+        scene.add(wall);
+    }
+    createWall(50, 50, 400, 20); // 2Dコードの最初の壁
 
-    const onKeyDown = (e) => {
-        switch (e.code) {
-            case 'KeyW': moveForward = true; break;
-            case 'KeyA': moveLeft = true; break;
-            case 'KeyS': moveBackward = true; break;
-            case 'KeyD': moveRight = true; break;
+    const light = new THREE.CombinedCamera ? null : new THREE.HemisphereLight(0xffffff, 0x444444, 1);
+    scene.add(light || new THREE.AmbientLight(0xffffff));
+
+    // --- オンライン同期 (Achex) ---
+    const socket = new WebSocket('wss://cloud.achex.ca/yajusenpaiikisug1');
+    const players = {};
+
+    socket.onopen = () => {
+        socket.send(JSON.stringify({auth: playerId, password: "pass"}));
+        socket.send(JSON.stringify({joinHub: gameName}));
+    };
+
+    socket.onmessage = (event) => {
+        const json = JSON.parse(event.data);
+        if (!json.msg) return;
+        const data = JSON.parse(json.msg);
+
+        if (data.id && data.id !== playerId) {
+            if (!players[data.id]) {
+                // 新規プレイヤー（3Dモデル）作成
+                const geo = new THREE.CapsuleGeometry(10, 20, 4, 8);
+                const mat = new THREE.MeshPhongMaterial({ color: data.color || 'blue' });
+                const mesh = new THREE.Mesh(geo, mat);
+                scene.add(mesh);
+                players[data.id] = mesh;
+            }
+            // 位置同期
+            players[data.id].position.set(data.x, 10, data.z);
+        }
+        if (data.quit) {
+            scene.remove(players[data.quit]);
+            delete players[data.quit];
         }
     };
+
+    // --- 移動ロジック ---
+    let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
+    const onKeyDown = (e) => {
+        if (e.code === 'ArrowUp' || e.code === 'KeyW') moveForward = true;
+        if (e.code === 'ArrowDown' || e.code === 'KeyS') moveBackward = true;
+        if (e.code === 'ArrowLeft' || e.code === 'KeyA') moveLeft = true;
+        if (e.code === 'ArrowRight' || e.code === 'KeyD') moveRight = true;
+    };
     const onKeyUp = (e) => {
-        switch (e.code) {
-            case 'KeyW': moveForward = false; break;
-            case 'KeyA': moveLeft = false; break;
-            case 'KeyS': moveBackward = false; break;
-            case 'KeyD': moveRight = false; break;
-        }
+        if (e.code === 'ArrowUp' || e.code === 'KeyW') moveForward = false;
+        if (e.code === 'ArrowDown' || e.code === 'KeyS') moveBackward = false;
+        if (e.code === 'ArrowLeft' || e.code === 'KeyA') moveLeft = false;
+        if (e.code === 'ArrowRight' || e.code === 'KeyD') moveRight = false;
     };
     document.addEventListener('keydown', onKeyDown);
     document.addEventListener('keyup', onKeyUp);
 
-    // --- 4. オンライン同期 (Achex) ---
-    const otherPlayers = {};
-    const myId = "player_" + Math.floor(Math.random() * 100000);
-    
-    // Achexサーバーへの接続
-    const net = new Achex("wss://achex.ca:4010");
-    
-    net.on('ready', () => {
-        net.join("fps_room_123"); // 任意のルーム名
-    });
-
-    net.on('message', (msg) => {
-        if (msg.auth === myId) return;
-
-        // 他プレイヤーの作成と更新
-        if (!otherPlayers[msg.auth]) {
-            const geo = new THREE.BoxGeometry(1, 2, 1);
-            const mat = new THREE.MeshPhongMaterial({ color: 0xff0000 });
-            const mesh = new THREE.Mesh(geo, mat);
-            scene.add(mesh);
-            otherPlayers[msg.auth] = mesh;
-        }
-        
-        if (msg.type === "move") {
-            otherPlayers[msg.auth].position.set(msg.x, msg.y - 1, msg.z);
-        }
-    });
-
-    // --- 5. 更新ループ ---
+    // --- メインループ ---
+    const velocity = new THREE.Vector3();
     const clock = new THREE.Clock();
 
     function animate() {
@@ -106,39 +121,40 @@
         const delta = clock.getDelta();
 
         if (controls.isLocked) {
-            velocity.x -= velocity.x * 10.0 * delta;
-            velocity.z -= velocity.z * 10.0 * delta;
+            const speed = 200; // 移動速度
+            velocity.set(0, 0, 0);
 
-            direction.z = Number(moveForward) - Number(moveBackward);
-            direction.x = Number(moveRight) - Number(moveLeft);
-            direction.normalize();
+            if (moveForward) velocity.z -= speed * delta;
+            if (moveBackward) velocity.z += speed * delta;
+            if (moveLeft) velocity.x -= speed * delta;
+            if (moveRight) velocity.x += speed * delta;
 
-            if (moveForward || moveBackward) velocity.z -= direction.z * 100.0 * delta;
-            if (moveLeft || moveRight) velocity.x -= direction.x * 100.0 * delta;
+            controls.moveRight(velocity.x);
+            controls.moveForward(-velocity.z);
 
-            controls.moveRight(-velocity.x * delta);
-            controls.moveForward(-velocity.z * delta);
-
-            // 自分の位置を送信
-            net.send({
-                type: "move",
-                x: camera.position.x,
-                y: camera.position.y,
-                z: camera.position.z,
-                auth: myId
-            }, "fps_room_123");
+            // Achexへ位置送信 (2Dの y を 3Dの z として送信)
+            if (socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify({
+                    toH: gameName,
+                    msg: JSON.stringify({
+                        id: playerId,
+                        x: camera.position.x,
+                        z: camera.position.z,
+                        name: playerName
+                    })
+                }));
+            }
         }
-
         renderer.render(scene, camera);
     }
     animate();
 
-    // ウィンドウリサイズ対応
     window.addEventListener('resize', () => {
         camera.aspect = window.innerWidth / window.innerHeight;
         camera.updateProjectionMatrix();
         renderer.setSize(window.innerWidth, window.innerHeight);
     });
+
 </script>
 </body>
 </html>
