@@ -3,19 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>NY Interceptor Mobile</title>
+    <title>NY Morning Flight - Free Roam</title>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Courier New', Courier, monospace; touch-action: none; }
-        #ui { position: absolute; top: 20px; width: 100%; text-align: center; color: #0f0; pointer-events: none; text-shadow: 0 0 5px #0f0; }
-        #score { font-size: 24px; font-weight: bold; }
-        #msg { font-size: 14px; color: #fff; margin-top: 5px; }
-        .vignette { position: fixed; top: 0; left: 0; width: 100%; height: 100%; box-shadow: inset 0 0 100px rgba(0,0,0,0.9); pointer-events: none; }
+        body { margin: 0; overflow: hidden; background-color: #87CEEB; font-family: 'Segoe UI', sans-serif; touch-action: none; }
+        #ui { position: absolute; top: 20px; width: 100%; text-align: center; color: #fff; pointer-events: none; text-shadow: 2px 2px 4px rgba(0,0,0,0.3); }
+        #score-board { font-size: 28px; font-weight: 900; }
+        #hint { font-size: 14px; opacity: 0.8; }
+        .vignette { position: fixed; top: 0; left: 0; width: 100%; height: 100%; box-shadow: inset 0 0 150px rgba(255,255,255,0.3); pointer-events: none; }
     </style>
 </head>
 <body>
     <div id="ui">
-        <div id="score">SCORE: 0</div>
-        <div id="msg">DRAG TO FLY / HIT THE TWIN TOWERS</div>
+        <div id="score-board">SCORE: 0</div>
+        <div id="hint">スワイプで自由に飛行 / 長押しで加速(BOOST)</div>
     </div>
     <div class="vignette"></div>
 
@@ -28,138 +28,145 @@
 
         // --- 基本設定 ---
         const scene = new THREE.Scene();
-        scene.fog = new THREE.FogExp2(0x050510, 0.015);
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        const renderer = new THREE.WebGLRenderer({ antialias: false }); // パフォーマンス優先
+        scene.background = new THREE.Color(0x87CEEB); // 朝の空色
+        scene.fog = new THREE.Fog(0x87CEEB, 20, 250);
+
+        const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.setPixelRatio(window.devicePixelRatio);
         document.body.appendChild(renderer.domElement);
 
-        // --- ライティング ---
-        const hemiLight = new THREE.HemisphereLight(0x4444ff, 0xff5500, 0.6);
-        scene.add(hemiLight);
+        // --- ライティング (朝の太陽光) ---
+        const sunLight = new THREE.DirectionalLight(0xffffff, 1.2);
+        sunLight.position.set(50, 100, 50);
+        scene.add(sunLight);
+        scene.add(new THREE.AmbientLight(0xffffff, 0.4));
 
-        // --- 街の生成（リサイクル可能にする） ---
-        const buildings = new THREE.Group();
-        scene.add(buildings);
-
-        function createCity() {
-            buildings.clear();
-            for (let i = 0; i < 60; i++) {
-                const h = Math.random() * 15 + 5;
-                const geo = new THREE.BoxGeometry(2, h, 2);
-                const mat = new THREE.MeshPhongMaterial({ color: 0x111122 });
-                const b = new THREE.Mesh(geo, mat);
-                b.position.set(Math.random() * 80 - 40, h / 2, Math.random() * -300 - 50);
-                buildings.add(b);
+        // --- 街の生成 ---
+        const cityGroup = new THREE.Group();
+        scene.add(cityGroup);
+        const bGeo = new THREE.BoxGeometry(1, 1, 1);
+        
+        function spawnBuildings() {
+            cityGroup.clear();
+            for (let i = 0; i < 120; i++) {
+                const h = Math.random() * 20 + 5;
+                const mat = new THREE.MeshPhongMaterial({ color: 0xaaaaaa });
+                const b = new THREE.Mesh(bGeo, mat);
+                b.scale.set(3, h, 3);
+                // 進行方向に長く生成
+                b.position.set(Math.random() * 200 - 100, h / 2, Math.random() * -600);
+                cityGroup.add(b);
             }
         }
-        createCity();
+        spawnBuildings();
 
-        // --- ターゲットビル ---
-        const targetGroup = new THREE.Group();
-        const tGeo = new THREE.BoxGeometry(5, 50, 5);
-        const tMat = new THREE.MeshPhongMaterial({ color: 0x333344, emissive: 0x111122 });
-        const tower1 = new THREE.Mesh(tGeo, tMat);
-        const tower2 = new THREE.Mesh(tGeo, tMat);
-        tower1.position.set(-4, 25, -150);
-        tower2.position.set(4, 25, -150);
-        targetGroup.add(tower1, tower2);
-        scene.add(targetGroup);
+        // --- ターゲット (ツインタワー) ---
+        const target = new THREE.Group();
+        const tMat = new THREE.MeshPhongMaterial({ color: 0xdddddd, specular: 0xffffff });
+        const t1 = new THREE.Mesh(new THREE.BoxGeometry(6, 60, 6), tMat);
+        const t2 = new THREE.Mesh(new THREE.BoxGeometry(6, 60, 6), tMat);
+        t1.position.set(-5, 30, 0);
+        t2.position.set(5, 30, 0);
+        target.add(t1, t2);
+        target.position.z = -200;
+        scene.add(target);
 
-        // --- 航空機 ---
+        // --- 航空機 (ジェット機風) ---
         const plane = new THREE.Group();
-        const pBody = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.2, 2), new THREE.MeshPhongMaterial({color: 0xffffff}));
-        const pWing = new THREE.Mesh(new THREE.BoxGeometry(3, 0.05, 0.7), new THREE.MeshPhongMaterial({color: 0xffffff}));
-        const engineLight = new THREE.PointLight(0x00ffff, 2, 10);
-        engineLight.position.z = 1;
-        plane.add(pBody, pWing, engineLight);
+        const pBody = new THREE.Mesh(new THREE.CapsuleGeometry(0.3, 1.5, 4, 8), new THREE.MeshPhongMaterial({color: 0xeeeeee}));
+        pBody.rotation.x = Math.PI / 2;
+        const pWing = new THREE.Mesh(new THREE.BoxGeometry(4, 0.05, 1), new THREE.MeshPhongMaterial({color: 0xcccccc}));
+        const pTail = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.05, 0.5), new THREE.MeshPhongMaterial({color: 0xcccccc}));
+        pTail.position.z = 0.8;
+        plane.add(pBody, pWing, pTail);
         scene.add(plane);
 
-        // --- 状態管理 ---
+        // --- ゲーム状態 ---
         let score = 0;
-        let targetX = 0, targetY = 5;
-        let speed = 0.8;
+        let targetX = 0, targetY = 10;
+        let speed = 0.7;
+        let baseSpeed = 0.7;
+        let isBoosting = false;
         let isExploded = false;
-        let shake = 0;
         const particles = [];
 
-        // --- 入力制御 (Mouse & Touch) ---
-        const handleInput = (x, y) => {
-            targetX = ((x / window.innerWidth) * 2 - 1) * 15;
-            targetY = (-(y / window.innerHeight) * 2 + 1) * 10 + 10;
+        // --- 操作系 ---
+        const updateInput = (x, y) => {
+            targetX = ((x / window.innerWidth) * 2 - 1) * 30; // 左右の遊びを大きく
+            targetY = (-(y / window.innerHeight) * 2 + 1) * 20 + 15;
         };
-        window.addEventListener('mousemove', e => handleInput(e.clientX, e.clientY));
-        window.addEventListener('touchmove', e => handleInput(e.touches[0].clientX, e.touches[0].clientY));
+
+        window.addEventListener('mousemove', e => updateInput(e.clientX, e.clientY));
+        window.addEventListener('touchmove', e => updateInput(e.touches[0].clientX, e.touches[0].clientY));
+        window.addEventListener('mousedown', () => isBoosting = true);
+        window.addEventListener('mouseup', () => isBoosting = false);
+        window.addEventListener('touchstart', () => isBoosting = true);
+        window.addEventListener('touchend', () => isBoosting = false);
 
         // --- 爆発演出 ---
-        function explode() {
+        function triggerExplosion() {
             isExploded = true;
-            shake = 1.5;
-            score += 1000;
-            document.getElementById('score').innerText = `SCORE: ${score}`;
-            document.getElementById('msg').innerText = "CRITICAL HIT!";
+            score += 100;
+            document.getElementById('score-board').innerText = `SCORE: ${score}`;
             
-            // スローモーション演出
-            speed = 0.1;
-
-            for (let i = 0; i < 100; i++) {
-                const p = new THREE.Mesh(new THREE.SphereGeometry(0.3), new THREE.MeshBasicMaterial({color: 0xffaa00}));
+            // パーティクル
+            for (let i = 0; i < 80; i++) {
+                const p = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), new THREE.MeshBasicMaterial({color: 0xff4400}));
                 p.position.copy(plane.position);
-                p.userData.v = new THREE.Vector3((Math.random()-0.5)*1, (Math.random()-0.5)*1, (Math.random()-0.5)*1);
+                p.userData.v = new THREE.Vector3((Math.random()-0.5)*1.5, (Math.random()-0.5)*1.5, (Math.random()-0.5)*1.5);
                 scene.add(p);
                 particles.push(p);
             }
 
+            // 復活処理
             setTimeout(() => {
-                reset();
-            }, 3000);
+                isExploded = false;
+                target.position.z -= 300; // さらに奥へ
+                target.position.x = (Math.random() - 0.5) * 40; // 位置をランダムに
+                spawnBuildings();
+            }, 1500);
         }
 
-        function reset() {
-            isExploded = false;
-            speed = 0.8;
-            plane.position.set(0, 5, 0);
-            targetGroup.position.z -= 200; // 次のターゲットを遠くに
-            createCity();
-            document.getElementById('msg').innerText = "DRAG TO FLY";
-        }
-
-        // --- ループ ---
+        // --- メインループ ---
         function animate() {
             requestAnimationFrame(animate);
 
             if (!isExploded) {
-                // 移動
-                plane.position.x += (targetX - plane.position.x) * 0.08;
-                plane.position.y += (targetY - plane.position.y) * 0.08;
+                // ブースト処理
+                const destSpeed = isBoosting ? 1.8 : baseSpeed;
+                speed += (destSpeed - speed) * 0.1;
+                camera.fov += ( (isBoosting ? 85 : 70) - camera.fov ) * 0.1;
+                camera.updateProjectionMatrix();
+
+                // 飛行物理
+                plane.position.x += (targetX - plane.position.x) * 0.05;
+                plane.position.y += (targetY - plane.position.y) * 0.05;
                 plane.position.z -= speed;
 
-                // 回転（バンク角）
-                plane.rotation.z = (plane.position.x - targetX) * 0.1;
-                plane.rotation.x = (targetY - plane.position.y) * 0.05;
+                // 自由度の高い回転演出
+                plane.rotation.z = (plane.position.x - targetX) * 0.15; // ロール
+                plane.rotation.x = (targetY - plane.position.y) * 0.05; // ピッチ
 
-                // 衝突判定 (簡単な距離判定)
-                const dx = Math.abs(plane.position.x - targetGroup.position.x);
-                const dz = Math.abs(plane.position.z - (targetGroup.position.z - 150));
-                if (dz < 3 && dx < 8 && plane.position.y < 50) {
-                    explode();
+                // カメラ追従 (滑らかに)
+                camera.position.lerp(new THREE.Vector3(plane.position.x * 0.5, plane.position.y + 3, plane.position.z + 10), 0.1);
+                camera.lookAt(plane.position.x, plane.position.y, plane.position.z - 20);
+
+                // 当たり判定
+                const distZ = Math.abs(plane.position.z - target.position.z);
+                const distX = Math.abs(plane.position.x - target.position.x);
+                if (distZ < 5 && distX < 10 && plane.position.y < 60) {
+                    triggerExplosion();
                 }
             }
-
-            // カメラ追従 + シェイク
-            camera.position.x = plane.position.x + (Math.random() - 0.5) * shake;
-            camera.position.y = plane.position.y + 2 + (Math.random() - 0.5) * shake;
-            camera.position.z = plane.position.z + 8;
-            camera.lookAt(plane.position.x, plane.position.y, plane.position.z - 10);
-            
-            if (shake > 0) shake *= 0.9;
 
             // パーティクル更新
             particles.forEach((p, i) => {
                 p.position.add(p.userData.v);
-                p.scale.multiplyScalar(0.96);
-                if (p.scale.x < 0.1) {
+                p.rotation.x += 0.1;
+                p.scale.multiplyScalar(0.95);
+                if (p.scale.x < 0.01) {
                     scene.remove(p);
                     particles.splice(i, 1);
                 }
