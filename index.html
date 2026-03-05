@@ -3,46 +3,50 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>3D Dogfight Mobile</title>
+    <title>WTM Style 3D Dogfight</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #87CEEB; touch-action: none; font-family: sans-serif; }
-        #ui { position: absolute; top: 20px; left: 20px; color: white; text-shadow: 2px 2px 2px black; pointer-events: none; }
-        #crosshair { 
-            position: absolute; top: 50%; left: 50%; 
-            transform: translate(-50%, -50%); 
-            width: 30px; height: 30px; border: 2px solid rgba(255,255,255,0.5); border-radius: 50%; 
-            pointer-events: none;
-        }
-        #crosshair::before { content: ''; position: absolute; top: 50%; left: -5px; width: 10px; height: 2px; background: white; }
-        #crosshair::after { content: ''; position: absolute; left: 50%; top: -5px; width: 2px; height: 10px; background: white; }
+        body { margin: 0; overflow: hidden; background: #87CEEB; touch-action: none; font-family: 'Arial', sans-serif; }
+        #ui-layer { position: absolute; width: 100%; height: 100%; pointer-events: none; }
         
-        #joystick-container {
-            position: absolute; bottom: 50px; left: 50px;
-            width: 120px; height: 120px; background: rgba(255,255,255,0.2);
-            border-radius: 50%; touch-action: none;
+        /* スロットル UI */
+        #throttle-container {
+            position: absolute; left: 30px; bottom: 50px; width: 60px; height: 200px;
+            background: rgba(0,0,0,0.3); border: 2px solid #fff; border-radius: 10px; pointer-events: auto;
         }
-        #joystick-knob {
-            position: absolute; top: 40px; left: 40px;
-            width: 40px; height: 40px; background: rgba(255,255,255,0.5);
-            border-radius: 50%;
+        #throttle-bar {
+            position: absolute; bottom: 0; width: 100%; background: rgba(255,255,0,0.6);
+            border-radius: 8px; transition: height 0.1s;
         }
-        #fire-btn {
-            position: absolute; bottom: 60px; right: 50px;
-            width: 80px; height: 80px; background: rgba(255,0,0,0.4);
-            border: 4px solid white; border-radius: 50%;
-            color: white; font-weight: bold; display: flex; align-items: center; justify-content: center;
+
+        /* ステータス */
+        #status { position: absolute; top: 20px; left: 20px; color: white; text-shadow: 2px 2px 2px #000; }
+        .hp-bar-bg { width: 200px; height: 10px; background: #555; margin-top: 5px; }
+        #hp-bar-fill { width: 100%; height: 100%; background: #0f0; transition: width 0.3s; }
+
+        /* 照準器 */
+        #crosshair {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 40px; height: 40px; border: 2px solid rgba(0,255,0,0.5); border-radius: 50%;
+        }
+
+        #fire-area {
+            position: absolute; right: 0; top: 0; width: 70%; height: 100%; pointer-events: auto;
         }
     </style>
 </head>
 <body>
 
-    <div id="ui">
-        <div>SCORE: <span id="score">0</span></div>
-        <div>HP: <span id="hp">100</span></div>
+    <div id="ui-layer">
+        <div id="status">
+            SCORE: <span id="score">0</span><br>
+            THROTTLE: <span id="throttle-text">50</span>%
+            <div class="hp-bar-bg"><div id="hp-bar-fill"></div></div>
+        </div>
+        <div id="crosshair"></div>
     </div>
-    <div id="crosshair"></div>
-    <div id="joystick-container"><div id="joystick-knob"></div></div>
-    <div id="fire-btn">FIRE</div>
+
+    <div id="throttle-container"><div id="throttle-bar"></div></div>
+    <div id="fire-area"></div>
 
     <script type="importmap">
         { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
@@ -51,207 +55,217 @@
     <script type="module">
         import * as THREE from 'three';
 
-        // --- ゲーム設定 ---
-        let score = 0, hp = 100, isGameOver = false;
-        const bullets = [], enemies = [], enemyBullets = [];
+        // --- 定数と変数 ---
+        let score = 0, hp = 100, throttle = 0.5;
+        let isFiring = false;
+        const bullets = [], enemies = [], islands = [];
         const clock = new THREE.Clock();
+        const mouse = new THREE.Vector2();
 
-        // --- シーン構築 ---
+        // --- シーン設定 ---
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x87CEEB);
-        scene.fog = new THREE.Fog(0x87CEEB, 100, 1000);
+        scene.background = new THREE.Color(0x6eb5ff);
+        scene.fog = new THREE.Fog(0x6eb5ff, 200, 1500);
 
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 1, 3000);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
 
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-        scene.add(ambientLight);
-        const sun = new THREE.DirectionalLight(0xffffff, 1);
-        sun.position.set(10, 50, 10);
-        scene.add(sun);
+        const light = new THREE.DirectionalLight(0xffffff, 1.2);
+        light.position.set(100, 200, 100);
+        scene.add(light);
+        scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+
+        // --- 地形（島）の生成 ---
+        function createIsland(x, z) {
+            const geo = new THREE.ConeGeometry(40 + Math.random() * 60, 40, 6);
+            const mat = new THREE.MeshPhongMaterial({ color: 0x3d5a2b });
+            const island = new THREE.Mesh(geo, mat);
+            island.position.set(x, -20, z);
+            scene.add(island);
+            islands.push(island);
+        }
+        for(let i=0; i<20; i++) createIsland((Math.random()-0.5)*2000, (Math.random()-0.5)*2000);
 
         // 海面
         const sea = new THREE.Mesh(
             new THREE.PlaneGeometry(5000, 5000),
-            new THREE.MeshPhongMaterial({ color: 0x006994 })
+            new THREE.MeshPhongMaterial({ color: 0x004d71, transparent: true, opacity: 0.8 })
         );
         sea.rotation.x = -Math.PI / 2;
-        sea.position.y = -100;
+        sea.position.y = -20;
         scene.add(sea);
 
-        // --- 機体作成関数 ---
-        function createPlane(color) {
+        // --- 機体作成 ---
+        function createPlaneMesh(color) {
             const group = new THREE.Group();
-            // 胴体
-            const body = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 4), new THREE.MeshPhongMaterial({color}));
+            const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.8, 4, 4, 8), new THREE.MeshPhongMaterial({color}));
+            body.rotation.x = Math.PI/2;
             group.add(body);
-            // 主翼
-            const wing = new THREE.Mesh(new THREE.BoxGeometry(5, 0.1, 1.5), new THREE.MeshPhongMaterial({color}));
+            const wing = new THREE.Mesh(new THREE.BoxGeometry(7, 0.1, 1.5), new THREE.MeshPhongMaterial({color}));
             group.add(wing);
-            // 尾翼
-            const tail = new THREE.Mesh(new THREE.BoxGeometry(2, 0.1, 0.8), new THREE.MeshPhongMaterial({color}));
-            tail.position.set(0, 0.3, -1.5);
-            group.add(tail);
             return group;
         }
 
-        const player = createPlane(0x1976d2);
+        const player = createPlaneMesh(0x2222ff);
         scene.add(player);
 
+        // 偏差インジケーター用
+        const leadIndicator = new THREE.Mesh(
+            new THREE.RingGeometry(1, 1.2, 16),
+            new THREE.MeshBasicMaterial({ color: 0xff0000, side: THREE.DoubleSide })
+        );
+        scene.add(leadIndicator);
+
         // --- 操作系 ---
-        const joystick = { x: 0, y: 0, active: false };
-        const joyContainer = document.getElementById('joystick-container');
-        const joyKnob = document.getElementById('joystick-knob');
-        let isFiring = false;
+        const throttleCont = document.getElementById('throttle-container');
+        const throttleBar = document.getElementById('throttle-bar');
+        const fireArea = document.getElementById('fire-area');
 
-        joyContainer.addEventListener('touchstart', (e) => { joystick.active = true; });
-        window.addEventListener('touchmove', (e) => {
-            if (!joystick.active) return;
+        // スロットル操作
+        const updateThrottle = (e) => {
             const touch = e.touches[0];
-            const rect = joyContainer.getBoundingClientRect();
-            const centerX = rect.left + rect.width / 2;
-            const centerY = rect.top + rect.height / 2;
-            joystick.x = Math.max(-1, Math.min(1, (touch.clientX - centerX) / 50));
-            joystick.y = Math.max(-1, Math.min(1, (touch.clientY - centerY) / 50));
-            joyKnob.style.transform = `translate(${joystick.x * 40}px, ${joystick.y * 40}px)`;
+            const rect = throttleCont.getBoundingClientRect();
+            let val = 1 - (touch.clientY - rect.top) / rect.height;
+            throttle = Math.max(0, Math.min(1, val));
+            throttleBar.style.height = (throttle * 100) + '%';
+            document.getElementById('throttle-text').innerText = Math.round(throttle * 100);
+        };
+        throttleCont.addEventListener('touchmove', updateThrottle);
+        throttleCont.addEventListener('touchstart', updateThrottle);
+
+        // 右画面での操縦（マウスルック風）
+        fireArea.addEventListener('touchmove', (e) => {
+            const touch = e.touches[0];
+            mouse.x = (touch.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(touch.clientY / window.innerHeight) * 2 + 1;
+            isFiring = true; // タッチ中は発射
         });
-        window.addEventListener('touchend', () => {
-            joystick.active = false;
-            joystick.x = 0; joystick.y = 0;
-            joyKnob.style.transform = `translate(0,0)`;
+        fireArea.addEventListener('touchstart', () => isFiring = true);
+        fireArea.addEventListener('touchend', () => {
+            isFiring = false;
+            mouse.x = 0; mouse.y = 0;
         });
 
-        document.getElementById('fire-btn').addEventListener('touchstart', () => { isFiring = true; });
-        document.getElementById('fire-btn').addEventListener('touchend', () => { isFiring = false; });
-
-        // --- 弾丸生成 ---
-        function spawnBullet(owner, isEnemy = false) {
-            const geom = new THREE.SphereGeometry(0.2, 8, 8);
-            const mat = new THREE.MeshBasicMaterial({ color: isEnemy ? 0xff0000 : 0xffff00 });
-            const bullet = new THREE.Mesh(geom, mat);
-            bullet.position.copy(owner.position);
-            bullet.quaternion.copy(owner.quaternion);
-            scene.add(bullet);
-            const list = isEnemy ? enemyBullets : bullets;
-            list.push({ mesh: bullet, life: 100 });
+        // --- 弾丸・敵 ---
+        function spawnBullet(owner, isEnemy=false) {
+            const b = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 2), new THREE.MeshBasicMaterial({color: isEnemy?0xff4400:0xfff700}));
+            b.position.copy(owner.position);
+            b.quaternion.copy(owner.quaternion);
+            scene.add(b);
+            bullets.push({ mesh: b, isEnemy, life: 120 });
         }
 
-        // --- 敵機生成 ---
         function spawnEnemy() {
-            const enemy = createPlane(0xd32f2f);
-            enemy.position.set(
-                player.position.x + (Math.random() - 0.5) * 400,
-                player.position.y + (Math.random() - 0.5) * 100 + 50,
-                player.position.z - 500
-            );
+            const enemy = createPlaneMesh(0xff2222);
+            enemy.position.set((Math.random()-0.5)*500, 50+Math.random()*50, -800);
             scene.add(enemy);
-            enemies.push({ mesh: enemy, hp: 3, lastFire: 0 });
+            enemies.push({ mesh: enemy, hp: 5, velocity: new THREE.Vector3(0,0,1) });
         }
+        for(let i=0; i<3; i++) spawnEnemy();
 
-        setInterval(() => { if(enemies.length < 5) spawnEnemy(); }, 3000);
-
-        // --- メインループ ---
+        // --- ループ ---
         function animate() {
-            if (isGameOver) return;
             requestAnimationFrame(animate);
             const delta = clock.getDelta();
 
-            // 1. 自機の移動と回転 (WTM風)
-            const speed = 60 * delta;
-            player.translateZ(speed); // 前進
+            // 1. プレイヤーの挙動
+            const currentSpeed = 30 + (throttle * 100);
+            player.translateZ(currentSpeed * delta);
 
-            // 旋回ロジック (ジョイスティック y:ピッチ, x:ロール)
-            player.rotateX(-joystick.y * delta * 1.5);
-            player.rotateZ(-joystick.x * delta * 2.0);
-            // 自然な水平復帰（ロールの自動修正）
-            if (Math.abs(joystick.x) < 0.1) {
-                player.rotation.z *= 0.95;
-            }
+            // 操作感の向上：マウス位置に向かって機首を向ける
+            const targetRotX = mouse.y * 1.0;
+            const targetRotY = -mouse.x * 1.5;
+            player.rotation.x = THREE.MathUtils.lerp(player.rotation.x, targetRotX, 0.05);
+            player.rotation.y = THREE.MathUtils.lerp(player.rotation.y, targetRotY, 0.05);
+            player.rotation.z = THREE.MathUtils.lerp(player.rotation.z, -mouse.x * 1.2, 0.1); // ロール
 
-            // 2. カメラ追従 (機体の後ろに配置)
-            const relativeCameraOffset = new THREE.Vector3(0, 3, -12);
-            const cameraOffset = relativeCameraOffset.applyMatrix4(player.matrixWorld);
-            camera.position.lerp(cameraOffset, 0.1);
-            camera.lookAt(player.position.clone().add(player.getWorldDirection(new THREE.Vector3()).multiplyScalar(20)));
+            // 2. カメラ追従（WTM風に少し上から）
+            const camPos = new THREE.Vector3(0, 5, -15).applyMatrix4(player.matrixWorld);
+            camera.position.lerp(camPos, 0.1);
+            camera.lookAt(player.position.clone().add(player.getWorldDirection(new THREE.Vector3()).multiplyScalar(30)));
 
-            // 3. 射撃
-            if (isFiring && clock.elapsedTime % 0.15 < 0.02) {
-                spawnBullet(player);
-            }
+            // 3. 敵のAIとインジケーター
+            let nearestEnemy = null;
+            let minDist = Infinity;
 
-            // 4. 弾の更新
-            [bullets, enemyBullets].forEach((list, idx) => {
-                const isEnemyList = idx === 1;
-                for (let i = list.length - 1; i >= 0; i--) {
-                    const b = list[i];
-                    b.mesh.translateZ(150 * delta);
-                    b.life--;
-                    if (b.life <= 0) {
-                        scene.remove(b.mesh);
-                        list.splice(i, 1);
-                    } else if (isEnemyList) {
-                        // 敵の弾が自分に当たったか
-                        if (b.mesh.position.distanceTo(player.position) < 2) {
-                            hp -= 5;
-                            document.getElementById('hp').innerText = hp;
-                            scene.remove(b.mesh);
-                            list.splice(i, 1);
-                        }
-                    }
-                }
+            enemies.forEach((en, i) => {
+                en.mesh.translateZ(80 * delta);
+                // プレイヤーの背後を取ろうとする簡易旋回
+                const toPlayer = player.position.clone().sub(en.mesh.position).normalize();
+                en.mesh.quaternion.slerp(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,0,1), toPlayer), 0.02);
+
+                const dist = en.mesh.position.distanceTo(player.position);
+                if(dist < minDist) { minDist = dist; nearestEnemy = en; }
+
+                // 敵の射撃
+                if(dist < 300 && Math.random() < 0.02) spawnBullet(en.mesh, true);
             });
 
-            // 5. 敵のAIと衝突判定
-            for (let i = enemies.length - 1; i >= 0; i--) {
-                const e = enemies[i];
-                e.mesh.translateZ(40 * delta);
-                
-                // プレイヤーを追跡 (簡易)
-                e.mesh.lookAt(player.position);
+            // 偏差インジケーターの計算
+            if(nearestEnemy) {
+                leadIndicator.visible = true;
+                // 偏差 = 敵の位置 + (敵の速度 * 弾が届くまでの時間)
+                const bulletSpeed = 200;
+                const time = minDist / bulletSpeed;
+                const leadPos = nearestEnemy.mesh.position.clone().add(
+                    nearestEnemy.mesh.getWorldDirection(new THREE.Vector3()).multiplyScalar(80 * time)
+                );
+                leadIndicator.position.copy(leadPos);
+                leadIndicator.lookAt(camera.position);
+            } else {
+                leadIndicator.visible = false;
+            }
 
-                // 射撃AI (一定距離かつ正面にプレイヤーがいる場合)
-                const dist = e.mesh.position.distanceTo(player.position);
-                if (dist < 200 && clock.elapsedTime - e.lastFire > 1.5) {
-                    spawnBullet(e.mesh, true);
-                    e.lastFire = clock.elapsedTime;
+            // 4. 弾の処理
+            if(isFiring && clock.getElapsedTime() % 0.1 < 0.02) spawnBullet(player);
+
+            for(let i=bullets.length-1; i>=0; i--) {
+                const b = bullets[i];
+                b.mesh.translateZ(200 * delta);
+                b.life--;
+
+                // 当たり判定
+                if(!b.isEnemy) {
+                    enemies.forEach((en, ei) => {
+                        if(b.mesh.position.distanceTo(en.mesh.position) < 8) {
+                            en.hp--;
+                            b.life = 0;
+                            if(en.hp <= 0) {
+                                scene.remove(en.mesh);
+                                enemies.splice(ei, 1);
+                                score += 500;
+                                document.getElementById('score').innerText = score;
+                                spawnEnemy();
+                            }
+                        }
+                    });
+                } else {
+                    if(b.mesh.position.distanceTo(player.position) < 3) {
+                        hp -= 2;
+                        document.getElementById('hp-bar-fill').style.width = hp + '%';
+                        b.life = 0;
+                    }
                 }
 
-                // 自分の弾が敵に当たったか
-                bullets.forEach((b, bIdx) => {
-                    if (b.mesh.position.distanceTo(e.mesh.position) < 4) {
-                        e.hp--;
-                        scene.remove(b.mesh);
-                        bullets.splice(bIdx, 1);
-                    }
-                });
-
-                if (e.hp <= 0) {
-                    scene.remove(e.mesh);
-                    enemies.splice(i, 1);
-                    score += 100;
-                    document.getElementById('score').innerText = score;
+                if(b.life <= 0) {
+                    scene.remove(b.mesh);
+                    bullets.splice(i, 1);
                 }
             }
 
-            if (hp <= 0) {
-                alert("撃墜されました！ スコア: " + score);
-                isGameOver = true;
+            // 地面衝突
+            if(player.position.y < -15) hp = 0;
+
+            if(hp <= 0) {
+                alert("GAME OVER! SCORE: " + score);
                 location.reload();
             }
 
             renderer.render(scene, camera);
         }
-
         animate();
-
-        // リサイズ対応
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        });
     </script>
 </body>
 </html>
