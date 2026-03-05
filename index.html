@@ -2,186 +2,152 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>NY Morning Flight - Free Roam</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Retro Flight Shooter</title>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #87CEEB; font-family: 'Segoe UI', sans-serif; touch-action: none; }
-        #ui { position: absolute; top: 20px; width: 100%; text-align: center; color: #fff; pointer-events: none; text-shadow: 2px 2px 4px rgba(0,0,0,0.3); }
-        #score-board { font-size: 28px; font-weight: 900; }
-        #hint { font-size: 14px; opacity: 0.8; }
-        .vignette { position: fixed; top: 0; left: 0; width: 100%; height: 100%; box-shadow: inset 0 0 150px rgba(255,255,255,0.3); pointer-events: none; }
+        body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; }
+        #ui { position: absolute; top: 20px; left: 20px; color: #0f0; text-shadow: 2px 2px #000; pointer-events: none; }
+        #msg { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: red; font-size: 40px; display: none; }
     </style>
 </head>
 <body>
-    <div id="ui">
-        <div id="score-board">SCORE: 0</div>
-        <div id="hint">スワイプで自由に飛行 / 長押しで加速(BOOST)</div>
-    </div>
-    <div class="vignette"></div>
+    <div id="ui">SCORE: <span id="score">0</span></div>
+    <div id="msg">CRASHED!</div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.min.js"></script>
+    <script>
+        let scene, camera, renderer, player, clock;
+        let buildings = [], bullets = [], targets = [], particles = [];
+        let score = 0, isDead = false;
+        const speed = 0.5;
 
-    <script type="importmap">
-        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
-    </script>
+        init();
+        animate();
 
-    <script type="module">
-        import * as THREE from 'three';
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x000033);
+            scene.fog = new THREE.Fog(0x000033, 10, 150);
 
-        // --- 基本設定 ---
-        const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x87CEEB); // 朝の空色
-        scene.fog = new THREE.Fog(0x87CEEB, 20, 250);
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
 
-        const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 1000);
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(window.devicePixelRatio);
-        document.body.appendChild(renderer.domElement);
+            const light = new THREE.DirectionalLight(0xffffff, 1);
+            light.position.set(5, 10, 5);
+            scene.add(light, new THREE.AmbientLight(0x404040));
 
-        // --- ライティング (朝の太陽光) ---
-        const sunLight = new THREE.DirectionalLight(0xffffff, 1.2);
-        sunLight.position.set(50, 100, 50);
-        scene.add(sunLight);
-        scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+            // プレイヤー(機体)
+            const shipGeo = new THREE.ConeGeometry(0.5, 2, 4);
+            const shipMat = new THREE.MeshPhongMaterial({ color: 0x00ff00, flatShading: true });
+            player = new THREE.Mesh(shipGeo, shipMat);
+            player.rotation.x = Math.PI / 2;
+            scene.add(player);
 
-        // --- 街の生成 ---
-        const cityGroup = new THREE.Group();
-        scene.add(cityGroup);
-        const bGeo = new THREE.BoxGeometry(1, 1, 1);
-        
-        function spawnBuildings() {
-            cityGroup.clear();
-            for (let i = 0; i < 120; i++) {
-                const h = Math.random() * 20 + 5;
-                const mat = new THREE.MeshPhongMaterial({ color: 0xaaaaaa });
-                const b = new THREE.Mesh(bGeo, mat);
-                b.scale.set(3, h, 3);
-                // 進行方向に長く生成
-                b.position.set(Math.random() * 200 - 100, h / 2, Math.random() * -600);
-                cityGroup.add(b);
+            // ビル群の生成
+            for (let i = 0; i < 60; i++) {
+                const h = Math.random() * 30 + 10;
+                const bGeo = new THREE.BoxGeometry(5, h, 5);
+                const bMat = new THREE.MeshPhongMaterial({ color: 0x444466 });
+                const b = new THREE.Mesh(bGeo, bMat);
+                b.position.set(Math.random() * 100 - 50, h / 2, -Math.random() * 500);
+                scene.add(b);
+                buildings.push(b);
             }
+
+            // ターゲット
+            for (let i = 0; i < 10; i++) spawnTarget();
+
+            clock = new THREE.Clock();
+
+            // 操作
+            window.addEventListener('mousemove', (e) => {
+                if (isDead) return;
+                player.position.x = (e.clientX / window.innerWidth) * 40 - 20;
+                player.position.y = -(e.clientY / window.innerHeight) * 20 + 20;
+            });
+
+            window.addEventListener('mousedown', shoot);
         }
-        spawnBuildings();
 
-        // --- ターゲット (ツインタワー) ---
-        const target = new THREE.Group();
-        const tMat = new THREE.MeshPhongMaterial({ color: 0xdddddd, specular: 0xffffff });
-        const t1 = new THREE.Mesh(new THREE.BoxGeometry(6, 60, 6), tMat);
-        const t2 = new THREE.Mesh(new THREE.BoxGeometry(6, 60, 6), tMat);
-        t1.position.set(-5, 30, 0);
-        t2.position.set(5, 30, 0);
-        target.add(t1, t2);
-        target.position.z = -200;
-        scene.add(target);
+        function spawnTarget() {
+            const tGeo = new THREE.OctahedronGeometry(1.5);
+            const tMat = new THREE.MeshBasicMaterial({ color: 0xff0000, wireframe: true });
+            const t = new THREE.Mesh(tGeo, tMat);
+            t.position.set(Math.random() * 80 - 40, Math.random() * 20 + 5, player.position.z - 200);
+            scene.add(t);
+            targets.push(t);
+        }
 
-        // --- 航空機 (ジェット機風) ---
-        const plane = new THREE.Group();
-        const pBody = new THREE.Mesh(new THREE.CapsuleGeometry(0.3, 1.5, 4, 8), new THREE.MeshPhongMaterial({color: 0xeeeeee}));
-        pBody.rotation.x = Math.PI / 2;
-        const pWing = new THREE.Mesh(new THREE.BoxGeometry(4, 0.05, 1), new THREE.MeshPhongMaterial({color: 0xcccccc}));
-        const pTail = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.05, 0.5), new THREE.MeshPhongMaterial({color: 0xcccccc}));
-        pTail.position.z = 0.8;
-        plane.add(pBody, pWing, pTail);
-        scene.add(plane);
+        function shoot() {
+            if (isDead) return;
+            const bGeo = new THREE.BoxGeometry(0.2, 0.2, 2);
+            const bMat = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+            const b = new THREE.Mesh(bGeo, bMat);
+            b.position.copy(player.position);
+            scene.add(b);
+            bullets.push(b);
+        }
 
-        // --- ゲーム状態 ---
-        let score = 0;
-        let targetX = 0, targetY = 10;
-        let speed = 0.7;
-        let baseSpeed = 0.7;
-        let isBoosting = false;
-        let isExploded = false;
-        const particles = [];
-
-        // --- 操作系 ---
-        const updateInput = (x, y) => {
-            targetX = ((x / window.innerWidth) * 2 - 1) * 30; // 左右の遊びを大きく
-            targetY = (-(y / window.innerHeight) * 2 + 1) * 20 + 15;
-        };
-
-        window.addEventListener('mousemove', e => updateInput(e.clientX, e.clientY));
-        window.addEventListener('touchmove', e => updateInput(e.touches[0].clientX, e.touches[0].clientY));
-        window.addEventListener('mousedown', () => isBoosting = true);
-        window.addEventListener('mouseup', () => isBoosting = false);
-        window.addEventListener('touchstart', () => isBoosting = true);
-        window.addEventListener('touchend', () => isBoosting = false);
-
-        // --- 爆発演出 ---
-        function triggerExplosion() {
-            isExploded = true;
-            score += 100;
-            document.getElementById('score-board').innerText = `SCORE: ${score}`;
-            
-            // パーティクル
-            for (let i = 0; i < 80; i++) {
-                const p = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), new THREE.MeshBasicMaterial({color: 0xff4400}));
-                p.position.copy(plane.position);
-                p.userData.v = new THREE.Vector3((Math.random()-0.5)*1.5, (Math.random()-0.5)*1.5, (Math.random()-0.5)*1.5);
+        function explode(pos, color) {
+            for (let i = 0; i < 20; i++) {
+                const pGeo = new THREE.BoxGeometry(0.3, 0.3, 0.3);
+                const pMat = new THREE.MeshBasicMaterial({ color: color });
+                const p = new THREE.Mesh(pGeo, pMat);
+                p.position.copy(pos);
+                p.userData.velocity = new THREE.Vector3(Math.random()-0.5, Math.random()-0.5, Math.random()-0.5).multiplyScalar(0.5);
                 scene.add(p);
                 particles.push(p);
             }
-
-            // 復活処理
-            setTimeout(() => {
-                isExploded = false;
-                target.position.z -= 300; // さらに奥へ
-                target.position.x = (Math.random() - 0.5) * 40; // 位置をランダムに
-                spawnBuildings();
-            }, 1500);
         }
 
-        // --- メインループ ---
         function animate() {
             requestAnimationFrame(animate);
+            if (!isDead) {
+                player.position.z -= speed;
+                camera.position.set(player.position.x, player.position.y + 2, player.position.z + 10);
+                camera.lookAt(player.position);
 
-            if (!isExploded) {
-                // ブースト処理
-                const destSpeed = isBoosting ? 1.8 : baseSpeed;
-                speed += (destSpeed - speed) * 0.1;
-                camera.fov += ( (isBoosting ? 85 : 70) - camera.fov ) * 0.1;
-                camera.updateProjectionMatrix();
-
-                // 飛行物理
-                plane.position.x += (targetX - plane.position.x) * 0.05;
-                plane.position.y += (targetY - plane.position.y) * 0.05;
-                plane.position.z -= speed;
-
-                // 自由度の高い回転演出
-                plane.rotation.z = (plane.position.x - targetX) * 0.15; // ロール
-                plane.rotation.x = (targetY - plane.position.y) * 0.05; // ピッチ
-
-                // カメラ追従 (滑らかに)
-                camera.position.lerp(new THREE.Vector3(plane.position.x * 0.5, plane.position.y + 3, plane.position.z + 10), 0.1);
-                camera.lookAt(plane.position.x, plane.position.y, plane.position.z - 20);
-
-                // 当たり判定
-                const distZ = Math.abs(plane.position.z - target.position.z);
-                const distX = Math.abs(plane.position.x - target.position.x);
-                if (distZ < 5 && distX < 10 && plane.position.y < 60) {
-                    triggerExplosion();
-                }
+                // 衝突判定（ビル）
+                const playerBox = new THREE.Box3().setFromObject(player);
+                buildings.forEach(b => {
+                    if (playerBox.intersectsBox(new THREE.Box3().setFromObject(b))) {
+                        isDead = true;
+                        explode(player.position, 0xffaa00);
+                        document.getElementById('msg').style.display = 'block';
+                    }
+                });
             }
+
+            // 弾の移動と敵との判定
+            bullets.forEach((b, i) => {
+                b.position.z -= 2;
+                targets.forEach((t, ti) => {
+                    if (b.position.distanceTo(t.position) < 3) {
+                        explode(t.position, 0xff0000);
+                        scene.remove(t); targets.splice(ti, 1);
+                        scene.remove(b); bullets.splice(i, 1);
+                        score += 100;
+                        document.getElementById('score').innerText = score;
+                        spawnTarget();
+                    }
+                });
+                if (b.position.z < player.position.z - 200) {
+                    scene.remove(b); bullets.splice(i, 1);
+                }
+            });
 
             // パーティクル更新
             particles.forEach((p, i) => {
-                p.position.add(p.userData.v);
-                p.rotation.x += 0.1;
+                p.position.add(p.userData.velocity);
                 p.scale.multiplyScalar(0.95);
                 if (p.scale.x < 0.01) {
-                    scene.remove(p);
-                    particles.splice(i, 1);
+                    scene.remove(p); particles.splice(i, 1);
                 }
             });
 
             renderer.render(scene, camera);
         }
-
-        animate();
-
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        });
     </script>
 </body>
 </html>
