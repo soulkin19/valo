@@ -2,232 +2,166 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>WTM Mobile Button Edition</title>
+    <title>3D City Flight Game</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #87CEEB; touch-action: none; font-family: sans-serif; }
-        #ui { position: absolute; width: 100%; height: 100%; pointer-events: none; color: white; text-shadow: 2px 2px #000; }
-        
-        /* ステータス */
-        #stats { position: absolute; top: 10px; left: 10px; font-size: 14px; }
-        .hp-bg { width: 120px; height: 8px; background: rgba(0,0,0,0.5); border: 1px solid #fff; }
-        #hp-fill { width: 100%; height: 100%; background: #0f0; }
-
-        /* 操作パネル：左（移動） */
-        .ctrl-panel-left {
-            position: absolute; left: 20px; bottom: 20px;
-            display: grid; grid-template-columns: repeat(3, 60px); grid-template-rows: repeat(3, 60px);
-            gap: 5px; pointer-events: auto;
-        }
-        /* 操作パネル：右（スロットル・射撃） */
-        .ctrl-panel-right {
-            position: absolute; right: 20px; bottom: 20px;
-            display: flex; flex-direction: column; align-items: flex-end; gap: 10px; pointer-events: auto;
-        }
-
-        .btn {
-            width: 60px; height: 60px; background: rgba(255,255,255,0.2);
-            border: 2px solid #fff; border-radius: 10px;
-            display: flex; align-items: center; justify-content: center;
-            font-weight: bold; font-size: 20px; color: white;
-            user-select: none; -webkit-user-select: none;
-        }
-        .btn:active { background: rgba(255,255,255,0.5); }
-        .btn-fire { width: 80px; height: 80px; background: rgba(255,0,0,0.4); border-radius: 50%; font-size: 16px; }
-        
-        #crosshair {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            width: 30px; height: 30px; border: 1px solid rgba(0,255,0,0.8); border-radius: 50%;
-        }
+        body { margin: 0; overflow: hidden; background-color: #000; font-family: sans-serif; }
+        #ui { position: absolute; top: 20px; left: 20px; color: white; pointer-events: none; }
+        #instructions { position: absolute; bottom: 20px; width: 100%; text-align: center; color: white; }
     </style>
 </head>
 <body>
-
     <div id="ui">
-        <div id="stats">
-            SCORE: <span id="score">0</span><br>
-            SPD: <span id="spd">0</span> km/h | THR: <span id="thr">50</span>%
-            <div class="hp-bg"><div id="hp-fill"></div></div>
-        </div>
-        <div id="crosshair"></div>
+        <h1>CITY FLIGHT</h1>
+        <p>STATUS: <span id="status">FLYING</span></p>
     </div>
-
-    <div class="ctrl-panel-left">
-        <div></div><div class="btn" id="btn-up">▲</div><div></div>
-        <div class="btn" id="btn-left">◀</div><div></div><div class="btn" id="btn-right">▶</div>
-        <div></div><div class="btn" id="btn-down">▼</div><div></div>
-    </div>
-
-    <div class="ctrl-panel-right">
-        <div style="display: flex; gap: 5px;">
-            <div class="btn" id="btn-thr-up">＋</div>
-            <div class="btn" id="btn-thr-down">－</div>
-        </div>
-        <div class="btn btn-fire" id="btn-fire">FIRE</div>
-    </div>
+    <div id="instructions">マウスを動かして操作 / クリックで加速</div>
 
     <script type="importmap">
-        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+            }
+        }
     </script>
 
     <script type="module">
         import * as THREE from 'three';
 
-        // --- ゲーム状態 ---
-        let score = 0, hp = 100, throttle = 0.5, speed = 0;
-        const bullets = [], enemies = [], obstacles = [];
-        const clock = new THREE.Clock();
-        const inputs = { up: false, down: false, left: false, right: false, fire: false };
-
-        // --- シーン構築 ---
+        // --- シーン設定 ---
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x60a0ff);
-        scene.fog = new THREE.Fog(0x60a0ff, 100, 2000);
-
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 5000);
+        scene.fog = new THREE.FogExp2(0x000011, 0.02);
+        
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setClearColor(0x000011);
         document.body.appendChild(renderer.domElement);
 
-        const light = new THREE.DirectionalLight(0xffffff, 1.5);
-        light.position.set(50, 100, 50);
-        scene.add(light);
-        scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+        // --- ライト ---
+        const ambientLight = new THREE.AmbientLight(0x404040);
+        scene.add(ambientLight);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+        directionalLight.position.set(10, 10, 10);
+        scene.add(directionalLight);
 
-        // 地面と巨大ビル
-        const sea = new THREE.Mesh(new THREE.PlaneGeometry(10000, 10000), new THREE.MeshPhongMaterial({color: 0x0a3d62}));
-        sea.rotation.x = -Math.PI/2; sea.position.y = -50;
-        scene.add(sea);
-
-        function createBigBuilding(x, z, h) {
-            const geo = new THREE.BoxGeometry(80, h, 80);
-            const mat = new THREE.MeshPhongMaterial({ color: 0x2c3e50 });
-            const b = new THREE.Mesh(geo, mat);
-            b.position.set(x, h/2 - 50, z);
-            scene.add(b);
-            obstacles.push(b);
+        // --- 街の作成 ---
+        const buildings = [];
+        const boxGeo = new THREE.BoxGeometry(1, 1, 1);
+        
+        for (let i = 0; i < 100; i++) {
+            const h = Math.random() * 10 + 2;
+            const material = new THREE.MeshPhongMaterial({ color: 0x222244 });
+            const building = new THREE.Mesh(boxGeo, material);
+            building.scale.set(2, h, 2);
+            building.position.set(Math.random() * 100 - 50, h / 2, Math.random() * -200);
+            scene.add(building);
         }
-        createBigBuilding(150, -400, 500);
-        createBigBuilding(-200, -700, 600);
 
-        // プレイヤー
-        const player = new THREE.Group();
-        const body = new THREE.Mesh(new THREE.CapsuleGeometry(1, 4, 4, 8), new THREE.MeshPhongMaterial({color: 0x34495e}));
-        body.rotation.x = Math.PI/2; player.add(body);
-        const wing = new THREE.Mesh(new THREE.BoxGeometry(9, 0.1, 2.5), new THREE.MeshPhongMaterial({color: 0x2c3e50}));
-        player.add(wing);
-        scene.add(player);
-
-        const lead = new THREE.Mesh(new THREE.RingGeometry(1.5, 2, 16), new THREE.MeshBasicMaterial({color: 0xff0000, side: THREE.DoubleSide}));
-        scene.add(lead);
-
-        // --- ボタン入力イベント ---
-        const setupBtn = (id, key) => {
-            const el = document.getElementById(id);
-            el.addEventListener('touchstart', (e) => { e.preventDefault(); inputs[key] = true; });
-            el.addEventListener('touchend', (e) => { e.preventDefault(); inputs[key] = false; });
+        // --- 2つのターゲットビル（連なったビル） ---
+        const towerMat = new THREE.MeshPhongMaterial({ color: 0x444466 });
+        const createTower = (x) => {
+            const tower = new THREE.Mesh(new THREE.BoxGeometry(4, 30, 4), towerMat.clone());
+            tower.position.set(x, 15, -100);
+            scene.add(tower);
+            return tower;
         };
-        setupBtn('btn-up', 'up'); setupBtn('btn-down', 'down');
-        setupBtn('btn-left', 'left'); setupBtn('btn-right', 'right');
-        setupBtn('btn-fire', 'fire');
+        const towerA = createTower(-3);
+        const towerB = createTower(3);
 
-        document.getElementById('btn-thr-up').addEventListener('touchstart', () => throttle = Math.min(throttle + 0.1, 1.0));
-        document.getElementById('btn-thr-down').addEventListener('touchstart', () => throttle = Math.max(throttle - 0.1, 0.2));
+        // --- 航空機 ---
+        const planeGroup = new THREE.Group();
+        const bodyGeo = new THREE.BoxGeometry(0.5, 0.3, 2);
+        const wingGeo = new THREE.BoxGeometry(3, 0.05, 0.8);
+        const planeMat = new THREE.MeshPhongMaterial({ color: 0xffffff });
+        
+        const body = new THREE.Mesh(bodyGeo, planeMat);
+        const wing = new THREE.Mesh(wingGeo, planeMat);
+        planeGroup.add(body, wing);
+        scene.add(planeGroup);
+        
+        camera.position.set(0, 2, 5);
 
-        // --- 弾と敵 ---
-        function shoot(owner, isEnemy=false) {
-            const b = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 3), new THREE.MeshBasicMaterial({color: isEnemy?0xff4400:0xfff200}));
-            b.position.copy(owner.position); b.quaternion.copy(owner.quaternion);
-            scene.add(b);
-            bullets.push({mesh: b, isEnemy, life: 100});
+        // --- 変数 ---
+        let mouseX = 0, mouseY = 0;
+        let speed = 0.5;
+        let exploded = false;
+        const particles = [];
+
+        // --- イベント ---
+        window.addEventListener('mousemove', (e) => {
+            mouseX = (e.clientX / window.innerWidth) * 2 - 1;
+            mouseY = -(e.clientY / window.innerHeight) * 2 + 1;
+        });
+
+        window.addEventListener('mousedown', () => speed = 1.2);
+        window.addEventListener('mouseup', () => speed = 0.5);
+
+        // --- 爆発関数 ---
+        function triggerExplosion(pos) {
+            if (exploded) return;
+            exploded = true;
+            document.getElementById('status').innerText = "IMPACT DETECTED";
+            document.getElementById('status').style.color = "red";
+            
+            towerA.material.color.set(0xff0000);
+            towerB.material.color.set(0xff0000);
+
+            for (let i = 0; i < 50; i++) {
+                const pGeo = new THREE.SphereGeometry(0.2);
+                const pMat = new THREE.MeshBasicMaterial({ color: 0xffaa00 });
+                const p = new THREE.Mesh(pGeo, pMat);
+                p.position.copy(pos);
+                p.userData.velocity = new THREE.Vector3(
+                    (Math.random() - 0.5) * 0.5,
+                    (Math.random() - 0.5) * 0.5,
+                    (Math.random() - 0.5) * 0.5
+                );
+                scene.add(p);
+                particles.push(p);
+            }
         }
 
-        function spawnEnemy() {
-            const e = new THREE.Group();
-            e.add(new THREE.Mesh(new THREE.BoxGeometry(8, 0.5, 4), new THREE.MeshPhongMaterial({color: 0xc0392b})));
-            e.position.set((Math.random()-0.5)*1000, 100, -1500);
-            scene.add(e);
-            enemies.push({mesh: e, hp: 4});
-        }
-        for(let i=0; i<4; i++) spawnEnemy();
-
-        // --- ループ ---
+        // --- アニメーションループ ---
         function animate() {
             requestAnimationFrame(animate);
-            const dt = clock.getDelta();
 
-            // 1. 飛行挙動 (ボタン操作)
-            speed = 40 + (throttle * 120);
-            player.translateZ(speed * dt);
+            if (!exploded) {
+                // 航空機の移動
+                planeGroup.position.x += (mouseX * 10 - planeGroup.position.x) * 0.05;
+                planeGroup.position.y += (mouseY * 10 + 5 - planeGroup.position.y) * 0.05;
+                planeGroup.position.z -= speed;
 
-            const rotSpeed = 1.8;
-            if (inputs.up) player.rotateX(rotSpeed * dt);
-            if (inputs.down) player.rotateX(-rotSpeed * dt);
-            if (inputs.left) { player.rotateY(rotSpeed * dt); player.rotateZ(rotSpeed * dt); }
-            if (inputs.right) { player.rotateY(-rotSpeed * dt); player.rotateZ(-rotSpeed * dt); }
-            
-            // 水平復帰（ロールの自動修正）
-            if (!inputs.left && !inputs.right) player.rotation.z *= 0.95;
+                // カメラが航空機を追う
+                camera.position.x = planeGroup.position.x;
+                camera.position.y = planeGroup.position.y + 2;
+                camera.position.z = planeGroup.position.z + 10;
+                camera.lookAt(planeGroup.position);
 
-            // 2. カメラ追従
-            const camPos = new THREE.Vector3(0, 5, -20).applyMatrix4(player.matrixWorld);
-            camera.position.lerp(camPos, 0.12);
-            camera.lookAt(player.position.clone().add(player.getWorldDirection(new THREE.Vector3()).multiplyScalar(50)));
-
-            // 3. UI更新
-            document.getElementById('spd').innerText = Math.round(speed * 3.6);
-            document.getElementById('thr').innerText = Math.round(throttle * 100);
-            document.getElementById('hp-fill').style.width = hp + '%';
-
-            // 4. 敵AI & 偏差
-            let target = null;
-            enemies.forEach(en => {
-                en.mesh.translateZ(85 * dt);
-                en.mesh.lookAt(player.position);
-                if (en.mesh.position.distanceTo(player.position) < 400) {
-                    if (!target) target = en;
-                    if (Math.random() < 0.02) shoot(en.mesh, true);
+                // 衝突判定
+                const distA = planeGroup.position.distanceTo(towerA.position);
+                const distB = planeGroup.position.distanceTo(towerB.position);
+                if (distA < 4 || distB < 4) {
+                    triggerExplosion(planeGroup.position);
                 }
-            });
-
-            if (target) {
-                lead.visible = true;
-                const tPos = target.mesh.position;
-                const leadTime = tPos.distanceTo(player.position) / 250;
-                lead.position.copy(tPos).add(target.mesh.getWorldDirection(new THREE.Vector3()).multiplyScalar(85 * leadTime));
-                lead.lookAt(camera.position);
-            } else lead.visible = false;
-
-            // 5. 弾と当たり判定
-            if (inputs.fire && clock.elapsedTime % 0.12 < 0.02) shoot(player);
-            for(let i=bullets.length-1; i>=0; i--) {
-                const b = bullets[i]; b.mesh.translateZ(280 * dt); b.life--;
-                if (b.isEnemy) {
-                    if (b.mesh.position.distanceTo(player.position) < 4) { hp -= 3; b.life = 0; }
-                } else {
-                    enemies.forEach((en, ei) => {
-                        if (b.mesh.position.distanceTo(en.mesh.position) < 12) {
-                            en.hp--; b.life = 0;
-                            if (en.hp <= 0) {
-                                scene.remove(en.mesh); enemies.splice(ei, 1);
-                                score += 100; document.getElementById('score').innerText = score;
-                                spawnEnemy();
-                            }
-                        }
-                    });
-                }
-                if (b.life <= 0) { scene.remove(b.mesh); bullets.splice(i, 1); }
+            } else {
+                // 爆発後のパーティクル移動
+                particles.forEach(p => {
+                    p.position.add(p.userData.velocity);
+                    p.scale.multiplyScalar(0.98);
+                });
             }
-
-            // 衝突
-            if (player.position.y < -45) hp = 0;
-            obstacles.forEach(o => { if(player.position.distanceTo(o.position) < 50) hp = 0; });
-
-            if (hp <= 0) { alert("撃墜されました！ SCORE: " + score); location.reload(); }
 
             renderer.render(scene, camera);
         }
+
         animate();
+
+        // リサイズ対応
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
     </script>
 </body>
 </html>
