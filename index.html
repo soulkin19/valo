@@ -3,31 +3,32 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>iPad FPS - Weapon System</title>
+    <title>iPad FPS - Real Spec Weapons</title>
     <style>
         body { margin: 0; overflow: hidden; background: #eee; touch-action: none; font-family: 'Courier New', monospace; }
         #crosshair {
             position: absolute; top: 50%; left: 50%;
-            width: 20px; height: 20px; border: 2px solid #333;
+            width: 16px; height: 16px; border: 2px solid #333;
             border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none;
         }
         #ui {
             position: absolute; top: 20px; left: 20px; color: #000; pointer-events: none;
-            background: rgba(255,255,255,0.7); padding: 10px; border-radius: 5px;
+            background: rgba(255,255,255,0.8); padding: 15px; border-radius: 8px; border: 2px solid #333;
         }
         #msg {
             position: absolute; width: 100%; top: 40%; text-align: center;
-            color: #333; font-size: 20px; pointer-events: none; font-weight: bold;
+            color: #d00; font-size: 24px; pointer-events: none; font-weight: bold; text-shadow: 1px 1px 0 #fff;
         }
     </style>
 </head>
 <body>
-    <div id="msg">画面を一度タップして開始<br>[1-5]: 武器変更 / [R]: リロード</div>
+    <div id="msg">画面タップで開始<br>[1-5]: 武器選択 / [SPACE]: 射撃 / [R]: リロード</div>
     <div id="crosshair"></div>
     <div id="ui">
         SCORE: <span id="score">0</span><br>
-        WEAPON: <span id="weapon-name">Pistol</span><br>
-        AMMO: <span id="ammo">10</span> / <span id="max-ammo">10</span>
+        WEAPON: <span id="weapon-name">ASh-12</span><br>
+        AMMO: <span id="ammo">30</span> / <span id="max-ammo">30</span><br>
+        <small>RPM: <span id="rpm">500</span> | VEL: <span id="vel">400</span></small>
     </div>
 
     <script type="importmap">
@@ -37,9 +38,8 @@
     <script type="module">
         import * as THREE from 'three';
 
-        // --- シーン設定（背景を明るく） ---
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x87ceeb); // 青空
+        scene.background = new THREE.Color(0x87ceeb);
         scene.fog = new THREE.Fog(0x87ceeb, 20, 100);
 
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -49,56 +49,41 @@
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
 
-        // --- ライティング ---
-        const sunLight = new THREE.DirectionalLight(0xffffff, 1.5);
-        sunLight.position.set(10, 20, 10);
-        scene.add(sunLight);
         scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+        const sun = new THREE.DirectionalLight(0xffffff, 1);
+        sun.position.set(10, 20, 10);
+        scene.add(sun);
 
-        // --- 地面 ---
-        const floor = new THREE.Mesh(
-            new THREE.PlaneGeometry(200, 200),
-            new THREE.MeshStandardMaterial({ color: 0x99cc99 }) // 明るい芝生色
-        );
+        const floor = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.MeshStandardMaterial({ color: 0x99cc99 }));
         floor.rotation.x = -Math.PI / 2;
         scene.add(floor);
         scene.add(new THREE.GridHelper(200, 40, 0x000000, 0x888888));
 
-        // --- 武器データ ---
+        // --- 武器スペック設定 ---
         const weapons = {
-            1: { name: "Pistol", ammo: 10, maxAmmo: 10, speed: 0.8, color: 0xffff00, size: 0.2 },
-            2: { name: "Rifle", ammo: 30, maxAmmo: 30, speed: 1.2, color: 0xff0000, size: 0.1 },
-            3: { name: "Shotgun", ammo: 5, maxAmmo: 5, speed: 0.6, color: 0x0000ff, size: 0.3 },
-            4: { name: "Sniper", ammo: 5, maxAmmo: 5, speed: 2.0, color: 0xffffff, size: 0.15 },
-            5: { name: "Plasma", ammo: 50, maxAmmo: 50, speed: 0.5, color: 0x00ffff, size: 0.25 }
+            '1': { name: "ASh-12", ammo: 30, maxAmmo: 30, rpm: 500, speed: 400, damage: 34, color: 0x555555 }, // 3発キル(34*3>100)
+            '2': { name: "HK416", ammo: 45, maxAmmo: 45, rpm: 880, speed: 600, damage: 21, color: 0x334433 },  // 5発キル(21*5>100)
+            '3': { name: "AS VAL", ammo: 45, maxAmmo: 45, rpm: 972, speed: 400, damage: 21, color: 0x111111 }, // 5発キル
+            '4': { name: "Type 95", ammo: 30, maxAmmo: 30, rpm: 650, speed: 550, damage: 25, color: 0x223322 }, // 4発キル
+            '5': { name: "M249", ammo: 100, maxAmmo: 100, rpm: 800, speed: 500, damage: 20, color: 0x444400 }  // 5発キル
         };
-        let currentWep = weapons[1];
+        let currentWep = weapons['1'];
+        let lastFireTime = 0;
 
-        // --- 状態管理 ---
         let score = 0;
         const keys = {};
         const bullets = [];
         const bots = [];
 
-        window.addEventListener('touchstart', () => {
-            document.getElementById('msg').style.display = 'none';
-        }, { once: true });
+        window.addEventListener('touchstart', () => { document.getElementById('msg').style.display = 'none'; }, { once: true });
 
-        // --- キー入力処理 ---
         window.addEventListener('keydown', (e) => {
             keys[e.code] = true;
-            
-            // 武器切り替え
             if (weapons[e.key]) {
                 currentWep = weapons[e.key];
                 updateUI();
             }
-
-            // リロード
             if (e.code === 'KeyR') reload();
-
-            // スペースで射撃
-            if (e.code === 'Space') shoot();
         });
         window.addEventListener('keyup', (e) => keys[e.code] = false);
 
@@ -106,52 +91,54 @@
             document.getElementById('weapon-name').innerText = currentWep.name;
             document.getElementById('ammo').innerText = currentWep.ammo;
             document.getElementById('max-ammo').innerText = currentWep.maxAmmo;
+            document.getElementById('rpm').innerText = currentWep.rpm;
+            document.getElementById('vel').innerText = currentWep.speed;
             document.getElementById('score').innerText = score;
         }
 
         function reload() {
-            if (currentWep.ammo === currentWep.maxAmmo) return;
+            if (currentWep.isReloading || currentWep.ammo === currentWep.maxAmmo) return;
+            currentWep.isReloading = true;
             document.getElementById('msg').innerText = "RELOADING...";
             document.getElementById('msg').style.display = 'block';
             setTimeout(() => {
                 currentWep.ammo = currentWep.maxAmmo;
+                currentWep.isReloading = false;
                 updateUI();
                 document.getElementById('msg').style.display = 'none';
-            }, 1000);
+            }, 1500);
         }
 
         function shoot() {
-            if (currentWep.ammo <= 0) {
-                document.getElementById('msg').innerText = "OUT OF AMMO! PRESS R";
-                document.getElementById('msg').style.display = 'block';
-                return;
-            }
+            const now = performance.now();
+            const fireInterval = 60000 / currentWep.rpm; // RPMをミリ秒間隔に変換
+
+            if (now - lastFireTime < fireInterval) return;
+            if (currentWep.ammo <= 0 || currentWep.isReloading) return;
+
+            lastFireTime = now;
             currentWep.ammo--;
             updateUI();
 
-            const b = new THREE.Mesh(
-                new THREE.SphereGeometry(currentWep.size, 8, 8),
-                new THREE.MeshBasicMaterial({ color: currentWep.color })
-            );
+            const b = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 8), new THREE.MeshBasicMaterial({ color: currentWep.color }));
             b.position.copy(camera.position);
             const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
-            b.velocity = dir.multiplyScalar(currentWep.speed);
+            // 初速をゲーム内スケールに調整 (400 -> 1.0相当)
+            b.velocity = dir.multiplyScalar(currentWep.speed / 400);
+            b.damage = currentWep.damage;
             scene.add(b);
             bullets.push(b);
         }
 
-        // --- 敵の生成 ---
-        for(let i=0; i<6; i++) {
-            const bot = new THREE.Mesh(
-                new THREE.BoxGeometry(1, 2, 1),
-                new THREE.MeshStandardMaterial({ color: 0xcc0000 })
-            );
+        function createBot() {
+            const bot = new THREE.Mesh(new THREE.BoxGeometry(1, 2, 1), new THREE.MeshStandardMaterial({ color: 0xcc0000 }));
             bot.position.set(Math.random()*40-20, 1, -Math.random()*30-5);
+            bot.hp = 100; // 基本HP 100
             scene.add(bot);
             bots.push(bot);
         }
+        for(let i=0; i<6; i++) createBot();
 
-        // --- 視点操作 ---
         let lon = 0, lat = 0;
         window.addEventListener('mousemove', (e) => {
             lon -= e.movementX * 0.004;
@@ -163,39 +150,43 @@
             requestAnimationFrame(animate);
             camera.quaternion.setFromEuler(new THREE.Euler(lat, lon, 0, 'YXZ'));
 
-            // WASD移動
+            if (keys['Space']) shoot(); // スペース押しっぱなしで連射可能
+
             const dir = new THREE.Vector3();
-            if (keys['KeyW']) dir.z -= 0.1;
-            if (keys['KeyS']) dir.z += 0.1;
-            if (keys['KeyA']) dir.x -= 0.1;
-            if (keys['KeyD']) dir.x += 0.1;
-            camera.translateOnAxis(dir.normalize(), 0.1);
+            if (keys['KeyW']) dir.z -= 0.12;
+            if (keys['KeyS']) dir.z += 0.12;
+            if (keys['KeyA']) dir.x -= 0.12;
+            if (keys['KeyD']) dir.x += 0.12;
+            camera.translateOnAxis(dir.normalize(), 0.12);
             camera.position.y = 1.6;
 
-            // 弾丸更新
             for (let i = bullets.length - 1; i >= 0; i--) {
                 const b = bullets[i];
                 b.position.add(b.velocity);
                 bots.forEach(bot => {
-                    if (b.position.distanceTo(bot.position) < 1.5) {
-                        bot.position.set(Math.random()*40-20, 1, -Math.random()*40);
-                        score += 100;
-                        updateUI();
+                    if (b.position.distanceTo(bot.position) < 1.2) {
+                        bot.hp -= b.damage; // ダメージを与える
                         scene.remove(b);
                         bullets.splice(i, 1);
+                        
+                        if (bot.hp <= 0) { // HP0で撃破
+                            bot.position.set(Math.random()*40-20, 1, -Math.random()*40);
+                            bot.hp = 100;
+                            score += 100;
+                            updateUI();
+                        }
                     }
                 });
-                if(b.position.length() > 60) {
+                if(b.position.distanceTo(camera.position) > 100) {
                     scene.remove(b);
                     bullets.splice(i, 1);
                 }
             }
 
-            // ボット接近
             bots.forEach(bot => {
                 const moveDir = new THREE.Vector3().subVectors(camera.position, bot.position);
                 moveDir.y = 0;
-                bot.position.add(moveDir.normalize().multiplyScalar(0.04));
+                bot.position.add(moveDir.normalize().multiplyScalar(0.045));
             });
 
             renderer.render(scene, camera);
