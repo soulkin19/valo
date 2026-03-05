@@ -4,14 +4,15 @@
     <meta charset="UTF-8">
     <title>オンライン銃撃戦〜fire up 3D〜</title>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #000; }
+        body { margin: 0; overflow: hidden; background-color: #ba5b1c; font-family: sans-serif; }
         #ui {
             position: absolute; top: 10px; left: 10px; color: white;
-            font-family: sans-serif; pointer-events: none;
+            background: rgba(0,0,0,0.5); padding: 10px; border-radius: 5px;
+            pointer-events: none;
         }
         #crosshair {
             position: absolute; top: 50%; left: 50%;
-            width: 20px; height: 20px; border: 2px solid #0f0;
+            width: 10px; height: 10px; border: 2px solid #0f0;
             border-radius: 50%; transform: translate(-50%, -50%);
             pointer-events: none;
         }
@@ -20,9 +21,9 @@
 <body>
 
 <div id="ui">
+    <div id="nameDisplay">Player: -</div>
     <div id="hpDisplay">HP: 100</div>
-    <div id="weaponDisplay">Weapon: Handgun (1-5 key)</div>
-    <div id="status">Click to Start</div>
+    <div id="weaponDisplay">Weapon: Handgun</div>
 </div>
 <div id="crosshair"></div>
 
@@ -30,42 +31,54 @@
 <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/controls/PointerLockControls.js"></script>
 
 <script>
-    // --- 基本設定 ---
-    const playerName = prompt("名前を入力してください", "guest_") || "guest";
-    const gameName = prompt("部屋名（空欄でpublic）") || "public";
+    // --- 1. 設定と初期化 ---
+    const playerName = prompt("あなたの名前を入力してください", "guest_" + Math.floor(Math.random()*1000)) || "guest";
+    const gameName = prompt("部屋の名前を入力してください（空欄でpublic）") || "public";
+    const pcolor = prompt("色（red, blue, greenなど）", "blue") || "blue";
     const playerId = Math.random().toString(36).substr(2, 9);
 
+    document.getElementById('nameDisplay').innerText = `Player: ${playerName}`;
+
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0xba5b1c); // 元の背景色を継承
-    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
+    scene.background = new THREE.Color(0xba5b1c);
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 3000);
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     document.body.appendChild(renderer.domElement);
 
-    // --- 操作系 ---
+    // --- 2. 操作系（設定完了後に自動ロックを試行） ---
     const controls = new THREE.PointerLockControls(camera, document.body);
-    document.addEventListener('click', () => controls.lock());
-
-    // --- 地面と壁 (2Dのwallsデータを元に作成可能) ---
-    const grid = new THREE.GridHelper(2000, 50);
-    scene.add(grid);
     
-    // サンプルの壁（提示されたwallsの一部を3D化）
-    function createWall(x, z, w, d) {
-        const geo = new THREE.BoxGeometry(w, 50, d);
-        const mat = new THREE.MeshPhongMaterial({ color: 0x808080 });
-        const wall = new THREE.Mesh(geo, mat);
-        wall.position.set(x + w/2, 25, z + d/2);
-        scene.add(wall);
-    }
-    createWall(50, 50, 400, 20); // 2Dコードの最初の壁
+    // ブラウザの仕様上、ユーザー操作（クリック等）が必要な場合があるため、
+    // 最初の1回だけ画面をクリックしてもらう必要がありますが、それ以降は自動で進みます。
+    window.onload = () => {
+        alert("準備ができました。OKを押した後、画面をクリックして対戦開始です！");
+    };
 
-    const light = new THREE.CombinedCamera ? null : new THREE.HemisphereLight(0xffffff, 0x444444, 1);
-    scene.add(light || new THREE.AmbientLight(0xffffff));
+    // --- 3. ステージ構成（2Dの壁データを反映） ---
+    const wallsData = [
+        { x: 50, y: 50, w: 400, h: 20 },
+        { x: 50, y: 50, w: 20, h: 400 },
+        { x: 500, y: 200, w: 20, h: 300 }
+    ];
 
-    // --- オンライン同期 (Achex) ---
+    const wallMaterial = new THREE.MeshPhongMaterial({ color: 0x808080 });
+    wallsData.forEach(w => {
+        const geo = new THREE.BoxGeometry(w.w, 60, w.h);
+        const mesh = new THREE.Mesh(geo, wallMaterial);
+        // 2Dのx, yを3Dのx, zに変換
+        mesh.position.set(w.x + w.w/2, 30, w.y + w.h/2);
+        scene.add(mesh);
+    });
+
+    const light = new THREE.HemisphereLight(0xffffff, 0x444444, 1.2);
+    scene.add(light);
+    const grid = new THREE.GridHelper(2000, 50, 0x000000, 0x000000);
+    scene.add(grid);
+
+    // --- 4. オンライン同期 (Achex) ---
     const socket = new WebSocket('wss://cloud.achex.ca/yajusenpaiikisug1');
-    const players = {};
+    const enemies = {};
 
     socket.onopen = () => {
         socket.send(JSON.stringify({auth: playerId, password: "pass"}));
@@ -78,61 +91,45 @@
         const data = JSON.parse(json.msg);
 
         if (data.id && data.id !== playerId) {
-            if (!players[data.id]) {
-                // 新規プレイヤー（3Dモデル）作成
-                const geo = new THREE.CapsuleGeometry(10, 20, 4, 8);
-                const mat = new THREE.MeshPhongMaterial({ color: data.color || 'blue' });
+            if (!enemies[data.id]) {
+                const geo = new THREE.BoxGeometry(20, 40, 20);
+                const mat = new THREE.MeshPhongMaterial({ color: data.color || 'red' });
                 const mesh = new THREE.Mesh(geo, mat);
                 scene.add(mesh);
-                players[data.id] = mesh;
+                enemies[data.id] = mesh;
             }
-            // 位置同期
-            players[data.id].position.set(data.x, 10, data.z);
-        }
-        if (data.quit) {
-            scene.remove(players[data.quit]);
-            delete players[data.quit];
+            enemies[data.id].position.set(data.x, 20, data.z);
         }
     };
 
-    // --- 移動ロジック ---
+    // --- 5. 移動とループ ---
     let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
-    const onKeyDown = (e) => {
-        if (e.code === 'ArrowUp' || e.code === 'KeyW') moveForward = true;
-        if (e.code === 'ArrowDown' || e.code === 'KeyS') moveBackward = true;
-        if (e.code === 'ArrowLeft' || e.code === 'KeyA') moveLeft = true;
-        if (e.code === 'ArrowRight' || e.code === 'KeyD') moveRight = true;
-    };
-    const onKeyUp = (e) => {
-        if (e.code === 'ArrowUp' || e.code === 'KeyW') moveForward = false;
-        if (e.code === 'ArrowDown' || e.code === 'KeyS') moveBackward = false;
-        if (e.code === 'ArrowLeft' || e.code === 'KeyA') moveLeft = false;
-        if (e.code === 'ArrowRight' || e.code === 'KeyD') moveRight = false;
-    };
-    document.addEventListener('keydown', onKeyDown);
-    document.addEventListener('keyup', onKeyUp);
+    document.addEventListener('keydown', (e) => {
+        if (e.code === 'KeyW' || e.code === 'ArrowUp') moveForward = true;
+        if (e.code === 'KeyS' || e.code === 'ArrowDown') moveBackward = true;
+        if (e.code === 'KeyA' || e.code === 'ArrowLeft') moveLeft = true;
+        if (e.code === 'KeyD' || e.code === 'ArrowRight') moveRight = true;
+    });
+    document.addEventListener('keyup', (e) => {
+        if (e.code === 'KeyW' || e.code === 'ArrowUp') moveForward = false;
+        if (e.code === 'KeyS' || e.code === 'ArrowDown') moveBackward = false;
+        if (e.code === 'KeyA' || e.code === 'ArrowLeft') moveLeft = false;
+        if (e.code === 'KeyD' || e.code === 'ArrowRight') moveRight = false;
+    });
 
-    // --- メインループ ---
-    const velocity = new THREE.Vector3();
     const clock = new THREE.Clock();
-
     function animate() {
         requestAnimationFrame(animate);
         const delta = clock.getDelta();
 
         if (controls.isLocked) {
-            const speed = 200; // 移動速度
-            velocity.set(0, 0, 0);
+            const speed = 300 * delta;
+            if (moveForward) controls.moveForward(speed);
+            if (moveBackward) controls.moveForward(-speed);
+            if (moveLeft) controls.moveRight(-speed);
+            if (moveRight) controls.moveRight(speed);
 
-            if (moveForward) velocity.z -= speed * delta;
-            if (moveBackward) velocity.z += speed * delta;
-            if (moveLeft) velocity.x -= speed * delta;
-            if (moveRight) velocity.x += speed * delta;
-
-            controls.moveRight(velocity.x);
-            controls.moveForward(-velocity.z);
-
-            // Achexへ位置送信 (2Dの y を 3Dの z として送信)
+            // 位置を送信
             if (socket.readyState === WebSocket.OPEN) {
                 socket.send(JSON.stringify({
                     toH: gameName,
@@ -140,7 +137,7 @@
                         id: playerId,
                         x: camera.position.x,
                         z: camera.position.z,
-                        name: playerName
+                        color: pcolor
                     })
                 }));
             }
@@ -148,13 +145,6 @@
         renderer.render(scene, camera);
     }
     animate();
-
-    window.addEventListener('resize', () => {
-        camera.aspect = window.innerWidth / window.innerHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(window.innerWidth, window.innerHeight);
-    });
-
 </script>
 </body>
 </html>
