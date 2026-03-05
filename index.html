@@ -2,190 +2,153 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>fire up 3D - Multi-Device</title>
+    <title>Simple JS FPS - Vs Bot</title>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #ba5b1c; font-family: sans-serif; }
-        #setup-ui {
-            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            background: rgba(255, 255, 255, 0.9); padding: 20px; border-radius: 10px; text-align: center; z-index: 100;
-        }
-        #ui {
-            position: absolute; top: 10px; left: 10px; color: white;
-            background: rgba(0,0,0,0.5); padding: 10px; border-radius: 5px; pointer-events: none; display: none;
-        }
-        #mobile-controls {
-            position: absolute; bottom: 20px; left: 20px; width: 100px; height: 100px;
-            background: rgba(255,255,255,0.3); border-radius: 50%; display: none; touch-action: none;
-        }
+        body { margin: 0; overflow: hidden; font-family: sans-serif; }
         #crosshair {
-            position: absolute; top: 50%; left: 50%; width: 10px; height: 10px;
-            border: 2px solid #0f0; border-radius: 50%; transform: translate(-50%, -50%);
-            pointer-events: none; display: none;
+            position: absolute; top: 50%; left: 50%;
+            width: 20px; height: 20px;
+            border: 2px solid white; border-radius: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
         }
-        button { padding: 10px 20px; font-size: 16px; cursor: pointer; margin: 5px; }
+        #instructions {
+            position: absolute; top: 10px; left: 10px;
+            color: white; background: rgba(0,0,0,0.5); padding: 10px;
+        }
     </style>
 </head>
 <body>
+    <div id="crosshair"></div>
+    <div id="instructions">クリックで開始 / WASDで移動 / クリックで射撃</div>
 
-<div id="setup-ui">
-    <h2>fire up 3D</h2>
-    <input type="text" id="nameInput" placeholder="名前を入力" value="guest"><br><br>
-    <button onclick="startGame('pc')">PCで遊ぶ</button>
-    <button onclick="startGame('mobile')">スマホで遊ぶ</button>
-</div>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
 
-<div id="ui">
-    <div id="hpDisplay">HP: 100</div>
-    <div id="weaponDisplay">Weapon: Handgun (Space/Tap to Fire)</div>
-</div>
-<div id="crosshair"></div>
-<div id="mobile-controls"></div>
+    <script type="module">
+        import * as THREE from 'three';
+        import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/controls/PointerLockControls.js"></script>
-
-<script>
-    let isMobile = false;
-    let playerName, playerId, socket, camera, scene, renderer, controls;
-    const bullets = [];
-    const enemies = {};
-    const walls = [
-        { x: 50, y: 50, w: 400, h: 20 }, { x: 50, y: 50, w: 20, h: 400 },
-        { x: 500, y: 200, w: 20, h: 300 }, { x: 700, y: 400, w: 300, h: 20 },
-        { x: 1000, y: 100, w: 20, h: 400 }, { x: 1200, y: 600, w: 400, h: 20 }
-    ];
-
-    function startGame(device) {
-        isMobile = (device === 'mobile');
-        playerName = document.getElementById('nameInput').value || "guest";
-        playerId = Math.random().toString(36).substr(2, 9);
-        
-        document.getElementById('setup-ui').style.display = 'none';
-        document.getElementById('ui').style.display = 'block';
-        document.getElementById('crosshair').style.display = 'block';
-        if(isMobile) document.getElementById('mobile-controls').style.display = 'block';
-
-        initThree();
-        initNetwork();
-        animate();
-    }
-
-    function initThree() {
-        scene = new THREE.Scene();
-        scene.background = new THREE.Color(0xba5b1c);
-        camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 3000);
-        camera.position.set(100, 20, 100);
-
-        renderer = new THREE.WebGLRenderer({ antialias: true });
+        // --- 初期設定 ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87ceeb); // 空の色
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
 
-        const light = new THREE.HemisphereLight(0xffffff, 0x444444, 1.2);
+        // --- 照明 ---
+        const light = new THREE.DirectionalLight(0xffffff, 1);
+        light.position.set(5, 10, 7.5);
         scene.add(light);
+        scene.add(new THREE.AmbientLight(0x404040));
 
-        // 壁の生成
-        const wallMat = new THREE.MeshPhongMaterial({ color: 0x808080 });
-        walls.forEach(w => {
-            const geo = new THREE.BoxGeometry(w.w, 60, w.h);
-            const mesh = new THREE.Mesh(geo, wallMat);
-            mesh.position.set(w.x + w.w/2, 30, w.y + w.h/2);
-            scene.add(mesh);
+        // --- 地面 ---
+        const floorGeo = new THREE.PlaneGeometry(100, 100);
+        const floorMat = new THREE.MeshPhongMaterial({ color: 0x555555 });
+        const floor = new THREE.Mesh(floorGeo, floorMat);
+        floor.rotation.x = -Math.PI / 2;
+        scene.add(floor);
+
+        // --- コントロール ---
+        const controls = new PointerLockControls(camera, document.body);
+        document.addEventListener('click', () => controls.lock());
+
+        // --- ボット (敵) ---
+        const botGeo = new THREE.BoxGeometry(1, 2, 1);
+        const botMat = new THREE.MeshPhongMaterial({ color: 0xff0000 });
+        const bot = new THREE.Mesh(botGeo, botMat);
+        bot.position.set(10, 1, -10);
+        scene.add(bot);
+
+        // --- 弾丸の処理 ---
+        const bullets = [];
+        const shoot = () => {
+            const bGeo = new THREE.SphereGeometry(0.1, 8, 8);
+            const bMat = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+            const bullet = new THREE.Mesh(bGeo, bMat);
+            
+            bullet.position.copy(camera.position);
+            const direction = new THREE.Vector3();
+            camera.getWorldDirection(direction);
+            bullet.velocity = direction.multiplyScalar(0.5);
+            
+            scene.add(bullet);
+            bullets.push(bullet);
+        };
+
+        window.addEventListener('mousedown', (e) => {
+            if (controls.isLocked) shoot();
         });
 
-        // PC操作設定
-        controls = new THREE.PointerLockControls(camera, document.body);
-        if (!isMobile) {
-            document.body.addEventListener('click', () => controls.lock());
-        } else {
-            // モバイル用の簡易視点移動（画面タッチで回転）
-            document.addEventListener('touchmove', (e) => {
-                const touch = e.touches[0];
-                camera.rotation.y -= (touch.clientX - window.innerWidth/2) * 0.0001;
-            });
-        }
+        // --- 移動入力 ---
+        let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
+        const onKeyDown = (e) => {
+            if (e.code === 'KeyW') moveForward = true;
+            if (e.code === 'KeyS') moveBackward = true;
+            if (e.code === 'KeyA') moveLeft = true;
+            if (e.code === 'KeyD') moveRight = true;
+        };
+        const onKeyUp = (e) => {
+            if (e.code === 'KeyW') moveForward = false;
+            if (e.code === 'KeyS') moveBackward = false;
+            if (e.code === 'KeyA') moveLeft = false;
+            if (e.code === 'KeyD') moveRight = false;
+        };
+        document.addEventListener('keydown', onKeyDown);
+        document.addEventListener('keyup', onKeyUp);
 
-        // キーイベント
-        window.addEventListener('keydown', (e) => {
-            if (e.code === 'Space') fire();
+        // --- メインループ ---
+        const velocity = new THREE.Vector3();
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if (controls.isLocked) {
+                // プレイヤーの移動
+                const speed = 0.1;
+                if (moveForward) controls.moveForward(speed);
+                if (moveBackward) controls.moveForward(-speed);
+                if (moveLeft) controls.moveRight(-speed);
+                if (moveRight) controls.moveRight(speed);
+
+                // ボットのAI (単純にプレイヤーを追う)
+                const botSpeed = 0.03;
+                const dirToPlayer = new THREE.Vector3().subVectors(camera.position, bot.position);
+                dirToPlayer.y = 0; // 浮かび上がらないように
+                bot.position.add(dirToPlayer.normalize().multiplyScalar(botSpeed));
+
+                // 弾丸の更新と当たり判定
+                bullets.forEach((b, i) => {
+                    b.position.add(b.velocity);
+                    if (b.position.distanceTo(bot.position) < 1) {
+                        bot.position.set(Math.random()*20-10, 1, Math.random()*20-10); // リスポーン
+                        scene.remove(b);
+                        bullets.splice(i, 1);
+                    }
+                    // 遠くに行ったら削除
+                    if (b.position.length() > 100) {
+                        scene.remove(b);
+                        bullets.splice(i, 1);
+                    }
+                });
+            }
+
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // ウィンドウリサイズ対応
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
         });
-        if (isMobile) window.addEventListener('touchstart', fire);
-    }
-
-    function fire() {
-        const bulletGeo = new THREE.SphereGeometry(2, 8, 8);
-        const bulletMat = new THREE.MeshBasicMaterial({ color: 0xffff00 });
-        const bullet = new THREE.Mesh(bulletGeo, bulletMat);
-        
-        bullet.position.copy(camera.position);
-        const dir = new THREE.Vector3();
-        camera.getWorldDirection(dir);
-        
-        const bData = { mesh: bullet, dir: dir.multiplyScalar(10) };
-        bullets.push(bData);
-        scene.add(bullet);
-
-        // 通信で弾丸を共有（簡易化のため位置のみ）
-        socket.send(JSON.stringify({
-            toH: "public",
-            msg: JSON.stringify({ id: playerId, type: "fire", x: camera.position.x, z: camera.position.z, dx: dir.x, dz: dir.z })
-        }));
-    }
-
-    function initNetwork() {
-        socket = new WebSocket('wss://cloud.achex.ca/fireup_3d_room');
-        socket.onopen = () => {
-            socket.send(JSON.stringify({auth: playerId, password: "pass"}));
-            socket.send(JSON.stringify({joinHub: "public"}));
-        };
-        socket.onmessage = (e) => {
-            const data = JSON.parse(JSON.parse(e.data).msg || "{}");
-            if (data.id && data.id !== playerId) {
-                if (!enemies[data.id]) {
-                    const mesh = new THREE.Mesh(new THREE.BoxGeometry(20, 40, 20), new THREE.MeshPhongMaterial({color: 'blue'}));
-                    scene.add(mesh);
-                    enemies[data.id] = mesh;
-                }
-                enemies[data.id].position.set(data.x, 20, data.z);
-            }
-        };
-    }
-
-    let moveF = false, moveB = false, moveL = false, moveR = false;
-    document.addEventListener('keydown', (e) => {
-        if(e.code === 'KeyW') moveF = true; if(e.code === 'KeyS') moveB = true;
-        if(e.code === 'KeyA') moveL = true; if(e.code === 'KeyD') moveR = true;
-    });
-    document.addEventListener('keyup', (e) => {
-        if(e.code === 'KeyW') moveF = false; if(e.code === 'KeyS') moveB = false;
-        if(e.code === 'KeyA') moveL = false; if(e.code === 'KeyD') moveR = false;
-    });
-
-    function animate() {
-        requestAnimationFrame(animate);
-        if (controls && controls.isLocked || isMobile) {
-            const speed = 5;
-            if (moveF) controls.moveForward(speed);
-            if (moveB) controls.moveForward(-speed);
-            if (moveL) controls.moveRight(-speed);
-            if (moveR) controls.moveRight(speed);
-
-            // 弾丸の移動
-            bullets.forEach((b, i) => {
-                b.mesh.position.add(b.dir);
-                if (b.mesh.position.distanceTo(camera.position) > 1000) {
-                    scene.remove(b.mesh);
-                    bullets.splice(i, 1);
-                }
-            });
-
-            // 位置送信
-            if (socket && socket.readyState === 1) {
-                socket.send(JSON.stringify({ toH: "public", msg: JSON.stringify({ id: playerId, x: camera.position.x, z: camera.position.z }) }));
-            }
-        }
-        if(renderer) renderer.render(scene, camera);
-    }
-</script>
+    </script>
 </body>
 </html>
