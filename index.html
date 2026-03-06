@@ -3,10 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Mobile FPS - No Zoom Edition</title>
+    <title>Mobile FPS - Anti-Flip Recoil</title>
     <style>
         :root { --ui-color: #000; --ui-bg: rgba(255,255,255,0.9); }
-        /* touch-action: none でブラウザのズームやスクロールを完全に無効化 */
         * { touch-action: none; -webkit-tap-highlight-color: transparent; }
         body { margin: 0; overflow: hidden; background: #eee; font-family: sans-serif; -webkit-user-select: none; user-select: none; }
         
@@ -49,6 +48,7 @@
         }
         #fire-btn { background: rgba(255, 0, 0, 0.7); }
         #ads-btn { background: rgba(0, 128, 0, 0.6); width: 75px; height: 75px; font-size: 14px; }
+        #ads-btn.active { background: rgba(0, 128, 0, 1); border-color: #0f0; }
         #reload-btn { background: rgba(0, 0, 255, 0.6); width: 70px; height: 70px; font-size: 12px; }
 
         #joystick-base {
@@ -76,7 +76,7 @@
         SCORE: <span id="score">0</span><br>
         WEAPON: <span id="weapon-name">ASh-12</span><br>
         AMMO: <span id="ammo">30</span> / <span id="max-ammo">30</span><br>
-        <span id="ads-status">Hip Fire</span>
+        MODE: <span id="ads-status">Hip Fire</span>
     </div>
 
     <div id="weapon-selector">
@@ -102,7 +102,6 @@
     <script type="module">
         import * as THREE from 'three';
 
-        // --- Basic Setup ---
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x87ceeb);
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.01, 1000);
@@ -135,11 +134,11 @@
         gunContainer.add(sight);
 
         const weapons = {
-            '1': { name: "ASh-12", ammo: 30, maxAmmo: 30, rpm: 500, speed: 400, damage: 34, recoil: { y: 0.12, x: 0.03, spreadX: 0.05, speed: 0.1 } },
-            '2': { name: "HK416", ammo: 45, maxAmmo: 45, rpm: 880, speed: 600, damage: 21, recoil: { y: 0.06, x: -0.015, spreadX: 0.02, speed: 0.2 } },
-            '3': { name: "AS VAL", ammo: 45, maxAmmo: 45, rpm: 972, speed: 400, damage: 21, recoil: { y: 0.04, x: 0.01, spreadX: 0.03, speed: 0.3 } },
-            '4': { name: "Type 95", ammo: 30, maxAmmo: 30, rpm: 650, speed: 550, damage: 25, recoil: { y: 0.07, x: 0.01, spreadX: 0.02, speed: 0.15 } },
-            '5': { name: "M249", ammo: 100, maxAmmo: 100, rpm: 800, speed: 500, damage: 20, recoil: { y: 0.09, x: 0.04, spreadX: 0.01, speed: 0.2 } }
+            '1': { name: "ASh-12", ammo: 30, maxAmmo: 30, rpm: 500, speed: 400, damage: 34, recoil: { y: 0.04, x: 0.01, spreadX: 0.02, speed: 0.1 } },
+            '2': { name: "HK416", ammo: 45, maxAmmo: 45, rpm: 880, speed: 600, damage: 21, recoil: { y: 0.02, x: -0.005, spreadX: 0.01, speed: 0.2 } },
+            '3': { name: "AS VAL", ammo: 45, maxAmmo: 45, rpm: 972, speed: 400, damage: 21, recoil: { y: 0.015, x: 0.005, spreadX: 0.01, speed: 0.2 } },
+            '4': { name: "Type 95", ammo: 30, maxAmmo: 30, rpm: 650, speed: 550, damage: 25, recoil: { y: 0.025, x: 0.005, spreadX: 0.01, speed: 0.15 } },
+            '5': { name: "M249", ammo: 100, maxAmmo: 100, rpm: 800, speed: 500, damage: 20, recoil: { y: 0.03, x: 0.01, spreadX: 0.005, speed: 0.1 } }
         };
         let currentWep = weapons['1'];
         let lastFireTime = 0, isReloading = false, isFiring = false, score = 0;
@@ -162,6 +161,7 @@
         function startReload() {
             if (isReloading || currentWep.ammo === currentWep.maxAmmo) return;
             isReloading = true; isADS = false;
+            document.getElementById('ads-btn').classList.remove('active');
             document.getElementById('msg').innerText = "RELOADING...";
             document.getElementById('msg').style.display = 'block';
             updateUI();
@@ -178,21 +178,26 @@
         document.getElementById('fire-btn').addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); if(!isReloading) isFiring = true; });
         document.getElementById('fire-btn').addEventListener('touchend', (e) => { e.preventDefault(); e.stopPropagation(); isFiring = false; });
         
-        document.getElementById('ads-btn').addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); if(!isReloading) isADS = true; updateUI();});
-        document.getElementById('ads-btn').addEventListener('touchend', (e) => { e.preventDefault(); e.stopPropagation(); isADS = false; updateUI();});
+        document.getElementById('ads-btn').addEventListener('touchstart', (e) => { 
+            e.preventDefault(); e.stopPropagation(); 
+            if(!isReloading) {
+                isADS = !isADS;
+                if(isADS) document.getElementById('ads-btn').classList.add('active');
+                else document.getElementById('ads-btn').classList.remove('active');
+                updateUI();
+            }
+        });
 
         let lon = 0, lat = 0, moveX = 0, moveZ = 0;
         const joystickBase = document.getElementById('joystick-base'), joystickStick = document.getElementById('joystick-stick');
         let moveTouchId = null, lookTouchId = null, touchStartX = 0, touchStartY = 0, lookPrevX = 0, lookPrevY = 0;
-        let recoilLon = 0, recoilLat = 0;
+        
+        // 反動制御用
+        let currentRecoilY = 0, currentRecoilX = 0;
 
         window.start = () => { document.getElementById('start-overlay').style.display = 'none'; };
 
-        // ダブルタップズーム防止のためのグローバルイベント管理
         window.addEventListener('touchstart', (e) => {
-            if (e.target.tagName !== 'BUTTON' && !e.target.classList.contains('action-btn')) {
-                // ボタン以外の場所でもズーム挙動を抑制
-            }
             for (let t of e.changedTouches) {
                 if (t.clientX < window.innerWidth / 2 && moveTouchId === null) {
                     moveTouchId = t.identifier;
@@ -201,7 +206,7 @@
                     joystickBase.style.top = (t.clientY - 60) + 'px';
                     touchStartX = t.clientX; touchStartY = t.clientY;
                 } else if (t.clientX >= window.innerWidth / 2 && lookTouchId === null) {
-                    if(t.clientY > window.innerHeight / 4 && t.clientY < window.innerHeight * 0.7) {
+                    if(t.clientY > window.innerHeight / 4 && t.clientY < window.innerHeight * 0.75) {
                         lookTouchId = t.identifier;
                         lookPrevX = t.clientX; lookPrevY = t.clientY;
                     }
@@ -210,7 +215,7 @@
         }, { passive: false });
 
         window.addEventListener('touchmove', (e) => {
-            e.preventDefault(); // 画面のスクロールとズームを強制停止
+            e.preventDefault();
             for (let t of e.changedTouches) {
                 if (t.identifier === moveTouchId) {
                     let dx = t.clientX - touchStartX, dy = t.clientY - touchStartY;
@@ -223,7 +228,8 @@
                     let sensitivity = isADS ? 0.002 : 0.004;
                     lon -= (t.clientX - lookPrevX) * sensitivity;
                     lat -= (t.clientY - lookPrevY) * sensitivity;
-                    lat = Math.max(-1.5, Math.min(1.5, lat));
+                    // プレイヤーの操作による視点制限（真上・真下）
+                    lat = Math.max(-1.4, Math.min(1.4, lat));
                     lookPrevX = t.clientX; lookPrevY = t.clientY;
                 }
             }
@@ -241,11 +247,13 @@
             if (now - lastFireTime < 60000/currentWep.rpm || currentWep.ammo <= 0 || isReloading) return;
             lastFireTime = now; currentWep.ammo--; updateUI();
             
-            gunContainer.position.z += isADS ? 0.03 : 0.06;
+            gunContainer.position.z += isADS ? 0.02 : 0.04;
             const r = currentWep.recoil;
-            let adsMult = isADS ? 0.6 : 1.0;
-            recoilLat += r.y * adsMult;
-            recoilLon += (r.x + (Math.random() - 0.5) * 2 * r.spreadX) * adsMult; 
+            let adsMult = isADS ? 0.5 : 1.0;
+            
+            // 反動を累積させる
+            currentRecoilY += r.y * adsMult;
+            currentRecoilX += (r.x + (Math.random() - 0.5) * 2 * r.spreadX) * adsMult;
 
             const b = new THREE.Mesh(new THREE.SphereGeometry(0.07, 4, 4), new THREE.MeshBasicMaterial({ color: 0xff0000 }));
             b.position.copy(camera.position);
@@ -260,7 +268,7 @@
             document.getElementById('ammo').innerText = currentWep.ammo;
             document.getElementById('max-ammo').innerText = currentWep.maxAmmo;
             document.getElementById('score').innerText = score;
-            document.getElementById('ads-status').innerText = isADS ? "ADS" : "Hip Fire";
+            document.getElementById('ads-status').innerText = isADS ? "ADS ON" : "Hip Fire";
             document.getElementById('crosshair').style.display = isADS ? 'none' : 'block';
         }
 
@@ -275,16 +283,21 @@
             let targetPos = isADS ? adsPos : hipPos;
             let targetFOV = isADS ? 50 : 75;
 
-            gunContainer.position.x = THREE.MathUtils.lerp(gunContainer.position.x, targetPos.x, 0.2);
-            gunContainer.position.y = THREE.MathUtils.lerp(gunContainer.position.y, targetPos.y, 0.2);
+            gunContainer.position.x = THREE.MathUtils.lerp(gunContainer.position.x, targetPos.x, 0.15);
+            gunContainer.position.y = THREE.MathUtils.lerp(gunContainer.position.y, targetPos.y, 0.15);
             gunContainer.position.z = THREE.MathUtils.lerp(gunContainer.position.z, targetPos.z, 0.1);
-            camera.fov = THREE.MathUtils.lerp(camera.fov, targetFOV, 0.2);
+            camera.fov = THREE.MathUtils.lerp(camera.fov, targetFOV, 0.15);
             camera.updateProjectionMatrix();
 
-            lat += recoilLat; lon += recoilLon;
-            recoilLat *= (1 - currentWep.recoil.speed);
-            recoilLon *= (1 - currentWep.recoil.speed);
-            camera.quaternion.setFromEuler(new THREE.Euler(lat, lon, 0, 'YXZ'));
+            // 反動の減衰処理
+            currentRecoilY *= (1 - currentWep.recoil.speed);
+            currentRecoilX *= (1 - currentWep.recoil.speed);
+
+            // 合計角度の計算。lat + 反動 が限界を超えないようにクランプ。
+            let finalLat = Math.max(-1.5, Math.min(1.5, lat + currentRecoilY));
+            let finalLon = lon + currentRecoilX;
+            
+            camera.quaternion.setFromEuler(new THREE.Euler(finalLat, finalLon, 0, 'YXZ'));
 
             if (isFiring) shoot();
 
