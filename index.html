@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Mobile FPS - Enhanced</title>
+    <title>Mobile FPS - Tactical Update v2</title>
     <style>
         :root { --ui-color: #000; --ui-bg: rgba(255,255,255,0.9); }
         * { touch-action: none; -webkit-tap-highlight-color: transparent; }
         body { margin: 0; overflow: hidden; background: #222; font-family: sans-serif; -webkit-user-select: none; user-select: none; }
         #crosshair { position: absolute; top: 50%; left: 50%; width: 20px; height: 20px; border: 2px solid #3f3; border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; z-index: 10; }
         #ui { position: absolute; top: 20px; left: 20px; color: var(--ui-color); background: var(--ui-bg); padding: 12px; border-radius: 8px; border: 2px solid #333; z-index: 11; font-size: 14px; }
-        #msg { position: absolute; width: 100%; top: 30%; text-align: center; color: #f00; font-size: 24px; pointer-events: none; font-weight: bold; display: none; z-index: 12; text-shadow: 2px 2px #000; }
+        #msg { position: absolute; width: 100%; top: 30%; text-align: center; color: #ff0; font-size: 28px; pointer-events: none; font-weight: bold; display: none; z-index: 12; text-shadow: 3px 3px #000; }
         #weapon-selector { position: absolute; top: 20px; right: 20px; display: flex; flex-direction: column; gap: 8px; z-index: 30; }
         #weapon-selector button { background: var(--ui-bg); border: 2px solid #333; padding: 12px; border-radius: 8px; font-weight: bold; font-size: 14px; pointer-events: auto; }
         #weapon-selector button.active { background: #333; color: #fff; }
@@ -22,31 +22,29 @@
         #reload-btn { background: rgba(0, 0, 255, 0.6); width: 70px; height: 70px; font-size: 12px; }
         #joystick-base { position: absolute; bottom: 50px; left: 50px; width: 120px; height: 120px; background: rgba(0,0,0,0.2); border-radius: 50%; display: none; z-index: 15; }
         #joystick-stick { position: absolute; top: 35px; left: 35px; width: 50px; height: 50px; background: rgba(255,255,255,0.5); border-radius: 50%; }
-        #start-overlay { position: absolute; width: 100%; height: 100%; background: rgba(0,0,0,0.9); display: flex; justify-content: center; align-items: center; color: #fff; z-index: 100; text-align: center; line-height: 1.5; }
+        #damage-flash { position: absolute; width: 100%; height: 100%; pointer-events: none; box-shadow: inset 0 0 100px rgba(255,0,0,0); transition: box-shadow 0.1s; z-index: 50; }
+        #start-overlay { position: absolute; width: 100%; height: 100%; background: rgba(0,0,0,0.9); display: flex; justify-content: center; align-items: center; color: #fff; z-index: 100; text-align: center; line-height: 1.6; }
     </style>
 </head>
 <body>
-    <div id="start-overlay" onclick="start()">TOUCH TO START<br>(Mission: Defend the Base)</div>
+    <div id="damage-flash"></div>
+    <div id="start-overlay" onclick="start()"><b>TACTICAL OPERATION</b><br>1. Eliminate Infantry<br>2. Destroy Sea/Air Units<br>3. Neutralize Heavy Tank<br><br>[ TOUCH TO START ]</div>
     <div id="msg"></div>
     <div id="crosshair"></div>
     <div id="ui">
         SCORE: <span id="score">0</span><br>
         WEAPON: <span id="weapon-name">ASh-12</span><br>
         AMMO: <span id="ammo">20</span> / <span id="max-ammo">20</span><br>
-        PHASE: <span id="phase">1 (Infantry)</span>
+        PHASE: <span id="phase">1: Infantry</span>
     </div>
     <div id="weapon-selector">
         <button id="btn-1" class="active">ASh-12</button>
-        <button id="btn-2">SVD</button>
-        <button id="btn-3">M2010 ESR</button>
-        <button id="btn-4">MP7</button>
-        <button id="btn-at4" style="display:none; background: #fb0;">AT4</button>
+        <button id="btn-2">HK416</button>
+        <button id="btn-3">AS VAL</button>
+        <button id="btn-4">Type 95</button>
+        <button id="btn-5">AT4</button>
     </div>
-    <div id="controls-right">
-        <div id="ads-btn" class="action-btn">ADS</div>
-        <div id="reload-btn" class="action-btn">RELOAD</div>
-        <div id="fire-btn" class="action-btn">FIRE</div>
-    </div>
+    <div id="controls-right"><div id="ads-btn" class="action-btn">ADS</div><div id="reload-btn" class="action-btn">RELOAD</div><div id="fire-btn" class="action-btn">FIRE</div></div>
     <div id="joystick-base"><div id="joystick-stick"></div></div>
 
     <script type="importmap">{ "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }</script>
@@ -54,8 +52,8 @@
         import * as THREE from 'three';
 
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x445566);
-        scene.fog = new THREE.Fog(0x445566, 10, 300);
+        scene.background = new THREE.Color(0x222831);
+        scene.fog = new THREE.Fog(0x222831, 20, 400);
 
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
         camera.position.set(0, 1.6, 5);
@@ -64,201 +62,266 @@
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
 
-        scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-        const sun = new THREE.DirectionalLight(0xffffff, 1.2); sun.position.set(50, 100, 50); scene.add(sun);
+        scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+        const sun = new THREE.DirectionalLight(0xffffff, 1.0); sun.position.set(50, 100, 50); scene.add(sun);
 
-        const floor = new THREE.Mesh(new THREE.PlaneGeometry(1000, 1000), new THREE.MeshStandardMaterial({ color: 0x334433 }));
+        const floor = new THREE.Mesh(new THREE.PlaneGeometry(2000, 2000), new THREE.MeshStandardMaterial({ color: 0x222222 }));
         floor.rotation.x = -Math.PI / 2; scene.add(floor);
-        
-        const walls = [];
-        for(let i=0; i<20; i++) {
-            const h = Math.random()*20+10;
-            const b = new THREE.Mesh(new THREE.BoxGeometry(8, h, 8), new THREE.MeshStandardMaterial({color: 0x444444}));
-            b.position.set(Math.random()*160-80, h/2, -Math.random()*120-20);
-            scene.add(b); walls.push(b);
+
+        // 遮蔽物（ビル）の生成とリスト化
+        const obstacles = [];
+        for(let i=0; i<30; i++) {
+            const h = Math.random()*25+10;
+            const b = new THREE.Mesh(new THREE.BoxGeometry(8, h, 8), new THREE.MeshStandardMaterial({color: 0x393e46}));
+            b.position.set(Math.random()*250-125, h/2, -Math.random()*200-20);
+            scene.add(b);
+            obstacles.push({pos: b.position.clone(), size: 4.5}); // 当たり判定半径
         }
 
         const gunContainer = new THREE.Group(); camera.add(gunContainer); scene.add(camera);
-        const gunBody = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.12, 0.5), new THREE.MeshStandardMaterial({ color: 0x111111 }));
-        gunBody.position.set(0.2, -0.25, -0.4); gunContainer.add(gunBody);
+        const bodyG = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.15, 0.6), new THREE.MeshStandardMaterial({ color: 0x111111 }));
+        bodyG.position.set(0.2, -0.25, -0.4); gunContainer.add(bodyG);
 
         const weapons = {
-            '1': { name: "ASh-12", ammo: 20, maxAmmo: 20, rpm: 400, speed: 8, damage: 150, recoil: { y: 0.4, x: 0.05, speed: 0.08 } },
-            '2': { name: "SVD", ammo: 10, maxAmmo: 10, rpm: 200, speed: 18, damage: 120, recoil: { y: 0.35, x: 0.01, speed: 0.1 } },
-            '3': { name: "M2010 ESR", ammo: 5, maxAmmo: 5, rpm: 50, speed: 25, damage: 450, recoil: { y: 0.8, x: 0, speed: 0.03 } },
-            '4': { name: "MP7", ammo: 40, maxAmmo: 40, rpm: 950, speed: 7, damage: 25, recoil: { y: 0.1, x: 0.04, speed: 0.2 } },
-            'at4': { name: "AT4", ammo: 1, maxAmmo: 1, rpm: 60, speed: 3, damage: 1500, isRocket: true, recoil: { y: 0.8, x: 0, speed: 0.05 } }
+            '1': { name: "ASh-12", ammo: 20, maxAmmo: 20, rpm: 400, speed: 7, damage: 120, recoil: { y: 0.5, x: 0.1, speed: 0.1 } },
+            '2': { name: "HK416", ammo: 30, maxAmmo: 30, rpm: 800, speed: 9, damage: 32, recoil: { y: 0.18, x: 0.05, speed: 0.2 } },
+            '3': { name: "AS VAL", ammo: 20, maxAmmo: 20, rpm: 900, speed: 5, damage: 45, gravity: 0.01, recoil: { y: 0.1, x: 0.02, speed: 0.25 } },
+            '4': { name: "Type 95", ammo: 30, maxAmmo: 30, rpm: 650, speed: 8, damage: 38, recoil: { y: 0.12, x: 0, speed: 0.15 } },
+            '5': { name: "AT4", ammo: 1, maxAmmo: 1, rpm: 60, speed: 2, damage: 1000, isRocket: true, recoil: { y: 1.5, x: 0, speed: 0.05 } }
         };
 
-        let currentWep = weapons['1'], lastFireTime = 0, isReloading = false, isFiring = false, score = 0, phase = 1;
-        let spawnedHeli = false, spawnedBoat = false, spawnedFortress = false;
-        const bullets = [], bots = [], vehicles = [], effects = [];
-        let isADS = false, lon = 0, lat = 0, moveX = 0, moveZ = 0, currentRecoilY = 0;
+        let currentWep = weapons['1'], score = 0, phase = 1, isReloading = false, isFiring = false;
+        const bullets = [], enemyBullets = [], bots = [], vehicles = [], effects = [];
+        let isADS = false, lon = 0, lat = 0, moveX = 0, moveZ = 0, currentRecoilY = 0, currentRecoilX = 0;
+        let moveTouchId = null, lookTouchId = null, touchStartX = 0, touchStartY = 0, lookPrevX = 0, lookPrevY = 0;
 
         function updateUI() {
             document.getElementById('weapon-name').innerText = currentWep.name;
             document.getElementById('ammo').innerText = currentWep.ammo;
             document.getElementById('max-ammo').innerText = currentWep.maxAmmo;
             document.getElementById('score').innerText = score;
-            document.getElementById('phase').innerText = phase;
+            const phaseMap = {1: "1: Infantry", 2: "2: Invasion", 3: "3: Final Boss"};
+            document.getElementById('phase').innerText = phaseMap[phase];
         }
 
-        ['1','2','3','4','at4'].forEach(id => {
-            const btn = document.getElementById('btn-'+id);
-            if(btn) btn.addEventListener('touchstart', (e) => { 
+        // 武器選択
+        ['1','2','3','4','5'].forEach(id => {
+            document.getElementById('btn-'+id).addEventListener('touchstart', (e) => { 
                 e.preventDefault(); 
                 if(!isReloading) { 
-                    currentWep = weapons[id]; 
-                    updateUI(); 
-                    document.querySelectorAll('#weapon-selector button').forEach(b => b.classList.remove('active')); 
-                    btn.classList.add('active'); 
-                } 
+                    currentWep = weapons[id]; updateUI(); 
+                    document.querySelectorAll('#weapon-selector button').forEach(b => b.classList.remove('active'));
+                    document.getElementById('btn-'+id).classList.add('active');
+                }
             });
         });
 
-        document.getElementById('reload-btn').addEventListener('touchstart', (e) => {
-            e.preventDefault(); if (isReloading || currentWep.ammo === currentWep.maxAmmo) return;
-            isReloading = true; document.getElementById('msg').innerText = "RELOADING..."; document.getElementById('msg').style.display = 'block';
-            setTimeout(() => { currentWep.ammo = currentWep.maxAmmo; isReloading = false; updateUI(); document.getElementById('msg').style.display = 'none'; }, 1500);
-        });
+        function showMessage(txt, time=2000) {
+            const m = document.getElementById('msg'); m.innerText = txt; m.style.display = 'block';
+            setTimeout(() => m.style.display = 'none', time);
+        }
 
-        document.getElementById('fire-btn').addEventListener('touchstart', (e) => { e.preventDefault(); isFiring = true; });
-        document.getElementById('fire-btn').addEventListener('touchend', (e) => { e.preventDefault(); isFiring = false; });
-        document.getElementById('ads-btn').addEventListener('touchstart', (e) => { e.preventDefault(); isADS = !isADS; e.target.classList.toggle('active', isADS); });
+        function createExplosion(pos, color=0xffaa00, size=3) {
+            for(let i=0; i<5; i++) {
+                const s = new THREE.Mesh(new THREE.SphereGeometry(size * (1-i*0.2), 8, 8), new THREE.MeshBasicMaterial({ color: color, transparent: true, opacity: 0.8 }));
+                s.position.copy(pos).add(new THREE.Vector3(Math.random()-0.5, Math.random()-0.5, Math.random()-0.5).multiplyScalar(size));
+                scene.add(s);
+                effects.push({ obj: s, life: 1.0 + Math.random(), scale: 0.2 });
+            }
+        }
 
-        let moveTouchId = null, lookTouchId = null, touchStartX = 0, touchStartY = 0, lookPrevX = 0, lookPrevY = 0;
-        const joystickBase = document.getElementById('joystick-base'), joystickStick = document.getElementById('joystick-stick');
-        window.start = () => { document.getElementById('start-overlay').style.display = 'none'; };
+        function shoot() {
+            const now = performance.now();
+            if (now - (currentWep.lastFire || 0) < 60000/currentWep.rpm || currentWep.ammo <= 0 || isReloading) return;
+            currentWep.lastFire = now; currentWep.ammo--; updateUI();
+            
+            let adsMult = isADS ? 0.4 : 1.0;
+            currentRecoilY += currentWep.recoil.y * adsMult;
+            currentRecoilX += (Math.random()-0.5) * currentWep.recoil.x;
 
+            const bSize = currentWep.isRocket ? 0.4 : 0.12;
+            const b = new THREE.Mesh(new THREE.SphereGeometry(bSize, 8, 8), new THREE.MeshBasicMaterial({ color: currentWep.isRocket?0xff6600:0xffffcc }));
+            const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+            b.position.copy(camera.position).add(dir.clone().multiplyScalar(1.2));
+            b.userData = { velocity: dir.multiplyScalar(currentWep.speed), damage: currentWep.damage, gravity: currentWep.gravity || 0, isRocket: currentWep.isRocket };
+            scene.add(b); bullets.push(b);
+        }
+
+        // 初期配置
+        function spawnPhase1() {
+            for(let i=0; i<12; i++) {
+                const g = new THREE.Group();
+                const b = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.6, 0.5), new THREE.MeshStandardMaterial({ color: 0xcc0000 }));
+                g.add(b); g.position.set(Math.random()*160-80, 0.8, -Math.random()*100-40);
+                g.userData = { hp: 100 }; scene.add(g); bots.push(g);
+            }
+        }
+
+        function spawnVehicle(type) {
+            const group = new THREE.Group();
+            if(type === 'boat') {
+                const hull = new THREE.Mesh(new THREE.BoxGeometry(6, 2, 12), new THREE.MeshStandardMaterial({color: 0x1a2b3c}));
+                group.add(hull); group.position.set(Math.random()*100-50, 1, -150);
+                group.userData = { type: 'boat', hp: 400 };
+            } else if(type === 'heli') {
+                const body = new THREE.Mesh(new THREE.BoxGeometry(4, 3, 10), new THREE.MeshStandardMaterial({color: 0x2d3436}));
+                group.add(body); group.position.set(Math.random()*100-50, 30, -180);
+                group.userData = { type: 'heli', hp: 250 };
+            } else if(type === 'tank') {
+                const base = new THREE.Mesh(new THREE.BoxGeometry(12, 5, 15), new THREE.MeshStandardMaterial({color: 0x112211}));
+                const turret = new THREE.Mesh(new THREE.BoxGeometry(6, 3, 6), new THREE.MeshStandardMaterial({color: 0x223322}));
+                turret.position.y = 4; group.add(base, turret);
+                group.position.set(0, 2.5, -200);
+                group.userData = { type: 'tank', hp: 3000 };
+            }
+            group.userData.lastShoot = 0;
+            scene.add(group); vehicles.push(group);
+        }
+
+        window.start = () => { document.getElementById('start-overlay').style.display = 'none'; spawnPhase1(); };
+
+        // 入力処理（既存ベースに当たり判定追加）
         window.addEventListener('touchstart', (e) => {
             for (let t of e.changedTouches) {
                 if (t.clientX < window.innerWidth/2 && moveTouchId === null) {
-                    moveTouchId = t.identifier; joystickBase.style.display = 'block'; joystickBase.style.left = (t.clientX-60)+'px'; joystickBase.style.top = (t.clientY-60)+'px';
-                    touchStartX = t.clientX; touchStartY = t.clientY;
-                } else if (t.clientX >= window.innerWidth/2 && lookTouchId === null) {
-                    lookTouchId = t.identifier; lookPrevX = t.clientX; lookPrevY = t.clientY;
-                }
+                    moveTouchId = t.identifier; touchStartX = t.clientX; touchStartY = t.clientY;
+                    document.getElementById('joystick-base').style.display = 'block';
+                    document.getElementById('joystick-base').style.left = (t.clientX-60)+'px';
+                    document.getElementById('joystick-base').style.top = (t.clientY-60)+'px';
+                } else if (lookTouchId === null) { lookTouchId = t.identifier; lookPrevX = t.clientX; lookPrevY = t.clientY; }
             }
         });
-
         window.addEventListener('touchmove', (e) => {
             e.preventDefault();
             for (let t of e.changedTouches) {
                 if (t.identifier === moveTouchId) {
                     let dx = t.clientX - touchStartX, dy = t.clientY - touchStartY;
-                    const dist = Math.min(Math.sqrt(dx*dx+dy*dy), 50);
-                    const angle = Math.atan2(dy, dx);
-                    joystickStick.style.transform = `translate(${Math.cos(angle)*dist}px, ${Math.sin(angle)*dist}px)`;
-                    moveX = Math.cos(angle)*(dist/50); moveZ = Math.sin(angle)*(dist/50);
+                    const dist = Math.min(Math.sqrt(dx*dx+dy*dy), 50); const ang = Math.atan2(dy, dx);
+                    document.getElementById('joystick-stick').style.transform = `translate(${Math.cos(ang)*dist}px, ${Math.sin(ang)*dist}px)`;
+                    moveX = Math.cos(ang)*(dist/50); moveZ = Math.sin(ang)*(dist/50);
                 }
                 if (t.identifier === lookTouchId) {
-                    let sens = isADS ? 0.002 : 0.004;
-                    lon -= (t.clientX - lookPrevX) * sens; lat -= (t.clientY - lookPrevY) * sens;
+                    let s = isADS ? 0.002 : 0.005;
+                    lon -= (t.clientX - lookPrevX) * s; lat -= (t.clientY - lookPrevY) * s;
                     lat = Math.max(-1.4, Math.min(1.4, lat)); lookPrevX = t.clientX; lookPrevY = t.clientY;
                 }
             }
         }, { passive: false });
-
         window.addEventListener('touchend', (e) => {
             for (let t of e.changedTouches) {
-                if (t.identifier === moveTouchId) { moveTouchId = null; moveX = 0; moveZ = 0; joystickBase.style.display = 'none'; }
+                if (t.identifier === moveTouchId) { moveTouchId = null; moveX = 0; moveZ = 0; document.getElementById('joystick-base').style.display='none'; }
                 if (t.identifier === lookTouchId) lookTouchId = null;
             }
         });
 
-        function createExp(pos, size=5) {
-            const mesh = new THREE.Mesh(new THREE.SphereGeometry(size, 8, 8), new THREE.MeshBasicMaterial({color: 0xffaa00, transparent: true, opacity: 0.8}));
-            mesh.position.copy(pos); scene.add(mesh);
-            effects.push({obj: mesh, life: 1.0});
-        }
-
-        function shoot() {
-            const now = performance.now();
-            if (now - lastFireTime < 60000/currentWep.rpm || currentWep.ammo <= 0 || isReloading) return;
-            lastFireTime = now; currentWep.ammo--; updateUI();
-            currentRecoilY += currentWep.recoil.y * (isADS?0.5:1);
-            const b = new THREE.Mesh(new THREE.SphereGeometry(currentWep.isRocket?0.4:0.12, 8, 8), new THREE.MeshBasicMaterial({color: 0xffff00}));
-            const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
-            b.position.copy(camera.position).add(dir.clone().multiplyScalar(1.2));
-            b.userData = { velocity: dir.multiplyScalar(currentWep.speed), damage: currentWep.damage };
-            scene.add(b); bullets.push(b);
-        }
-
-        function spawnEnemy(type) {
-            const group = new THREE.Group();
-            if(type === 'fortress') {
-                const b = new THREE.Mesh(new THREE.BoxGeometry(10, 15, 10), new THREE.MeshStandardMaterial({color: 0x222222}));
-                group.add(b); group.userData = { hp: 3000, type: 'fortress' };
-            } else if(type === 'heli') {
-                const b = new THREE.Mesh(new THREE.BoxGeometry(3, 2, 8), new THREE.MeshStandardMaterial({color: 0x112211}));
-                group.add(b); group.userData = { hp: 500, type: 'heli' };
-            } else {
-                const b = new THREE.Mesh(new THREE.BoxGeometry(4, 1.5, 6), new THREE.MeshStandardMaterial({color: 0x111122}));
-                group.add(b); group.userData = { hp: 800, type: 'boat' };
-            }
-            group.position.set(Math.random()*100-50, type==='heli'?25:1, -200);
-            scene.add(group); vehicles.push(group);
-        }
-
-        for(let i=0; i<8; i++) {
-            const bot = new THREE.Mesh(new THREE.BoxGeometry(1, 2, 1), new THREE.MeshStandardMaterial({color: 0xcc0000}));
-            bot.position.set(Math.random()*100-50, 1, -Math.random()*100-20); bot.userData = {hp: 100}; scene.add(bot); bots.push(bot);
-        }
+        document.getElementById('fire-btn').addEventListener('touchstart', (e) => { e.preventDefault(); isFiring = true; });
+        document.getElementById('fire-btn').addEventListener('touchend', (e) => { e.preventDefault(); isFiring = false; });
+        document.getElementById('ads-btn').addEventListener('touchstart', (e) => { e.preventDefault(); isADS = !isADS; e.target.classList.toggle('active', isADS); });
+        document.getElementById('reload-btn').addEventListener('touchstart', (e) => {
+            if(isReloading || currentWep.ammo === currentWep.maxAmmo) return;
+            isReloading = true; showMessage("RELOADING...");
+            setTimeout(() => { currentWep.ammo = currentWep.maxAmmo; isReloading = false; updateUI(); }, 1500);
+        });
 
         function animate() {
             requestAnimationFrame(animate);
-            
-            // Phase Logic (One-time spawn)
-            if (score >= 1500 && phase === 1) { 
-                phase = 2; 
-                if(!spawnedHeli) { spawnEnemy('heli'); spawnedHeli = true; }
-                if(!spawnedBoat) { spawnEnemy('boat'); spawnedBoat = true; }
-                updateUI(); 
-            }
-            if (score >= 4000 && phase === 2) { 
-                phase = 3; 
-                document.getElementById('btn-at4').style.display = 'block'; 
-                if(!spawnedFortress) { spawnEnemy('fortress'); spawnedFortress = true; }
-                updateUI(); 
-            }
+            const now = performance.now();
 
-            currentRecoilY *= (1 - currentWep.recoil.speed);
-            camera.quaternion.setFromEuler(new THREE.Euler(Math.max(-1.5, Math.min(1.4, lat + currentRecoilY)), lon, 0, 'YXZ'));
+            // 反動減衰とカメラ更新
+            currentRecoilY *= (1 - currentWep.recoil.speed); currentRecoilX *= (1 - currentWep.recoil.speed);
+            camera.quaternion.setFromEuler(new THREE.Euler(lat + currentRecoilY, lon + currentRecoilX, 0, 'YXZ'));
+            camera.fov = THREE.MathUtils.lerp(camera.fov, isADS ? 40 : 75, 0.2); camera.updateProjectionMatrix();
+            gunContainer.position.lerp(isADS ? new THREE.Vector3(-0.2, 0.16, 0.1) : new THREE.Vector3(0,0,0), 0.2);
+
             if (isFiring) shoot();
 
+            // プレイヤー移動と遮蔽物判定
             if (moveTouchId !== null) {
                 const forward = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion); forward.y = 0; forward.normalize();
                 const right = new THREE.Vector3(1,0,0).applyQuaternion(camera.quaternion); right.y = 0; right.normalize();
-                const next = camera.position.clone().addScaledVector(forward, -moveZ*0.15).addScaledVector(right, moveX*0.15);
-                let hitWall = false;
-                walls.forEach(w => { if(new THREE.Box3().setFromObject(w).expandByScalar(0.5).containsPoint(next)) hitWall = true; });
-                if(!hitWall) camera.position.copy(next);
+                const newPos = camera.position.clone().addScaledVector(forward, -moveZ*0.15).addScaledVector(right, moveX*0.15);
+                
+                let canMove = true;
+                obstacles.forEach(o => { if(newPos.distanceTo(new THREE.Vector3(o.pos.x, 1.6, o.pos.z)) < o.size + 1) canMove = false; });
+                if(canMove) camera.position.copy(newPos);
             }
-            camera.position.y = 1.6;
 
+            // 弾丸処理
             for (let i = bullets.length - 1; i >= 0; i--) {
-                const b = bullets[i]; b.position.add(b.userData.velocity);
-                let hit = false;
-                walls.forEach(w => { if(new THREE.Box3().setFromObject(w).containsPoint(b.position)) hit = true; });
-                bots.forEach((bot, idx) => { if(b.position.distanceTo(bot.position) < 1.5) { bot.userData.hp -= b.userData.damage; hit = true; if(bot.userData.hp <= 0){ scene.remove(bot); bots.splice(idx,1); score += 100; updateUI(); } } });
-                vehicles.forEach((v, idx) => { if(!v.userData.dead && b.position.distanceTo(v.position) < 6) { v.userData.hp -= b.userData.damage; hit = true; if(v.userData.hp <= 0){ v.userData.dead = true; createExp(v.position, 12); score += 1000; updateUI(); } } });
-                if(hit || b.position.length() > 400) { scene.remove(b); bullets.splice(i, 1); }
+                const b = bullets[i]; b.userData.velocity.y -= b.userData.gravity; b.position.add(b.userData.velocity);
+                
+                // ビルへの衝突
+                let hitWall = false;
+                obstacles.forEach(o => { if(Math.abs(b.position.x - o.pos.x) < 4 && Math.abs(b.position.z - o.pos.z) < 4 && b.position.y < o.pos.y * 2) hitWall = true; });
+                
+                // 敵への衝突
+                bots.forEach((bot, bIdx) => {
+                    if (b.position.distanceTo(bot.position) < 1.5) {
+                        bot.userData.hp -= b.userData.damage; hitWall = true;
+                        if(bot.userData.hp <= 0) { createExplosion(bot.position, 0xff0000, 2); scene.remove(bot); bots.splice(bIdx, 1); score += 100; updateUI(); }
+                    }
+                });
+                vehicles.forEach((v, vIdx) => {
+                    if (b.position.distanceTo(v.position) < (v.userData.type==='tank'?10:6)) {
+                        v.userData.hp -= b.userData.damage; hitWall = true;
+                        if(v.userData.hp <= 0) { createExplosion(v.position, 0xffaa00, 15); scene.remove(v); vehicles.splice(vIdx, 1); score += 500; updateUI(); }
+                    }
+                });
+
+                if(hitWall || b.position.y < 0 || b.position.length() > 600) {
+                    if(b.userData.isRocket) createExplosion(b.position, 0xff4400, 8);
+                    scene.remove(b); bullets.splice(i, 1);
+                }
             }
 
-            vehicles.forEach((v, idx) => {
-                if(v.userData.dead) { 
-                    v.position.y -= 0.15; v.rotation.x += 0.02; 
-                    if(v.position.y < -15) { scene.remove(v); vehicles.splice(idx, 1); } 
-                } else { 
-                    v.position.z += 0.08; 
-                    if(v.position.z > 20) v.position.z = -200; // 画面端まで行ったらループ（破壊ではない）
+            // 敵の弾
+            for (let i = enemyBullets.length - 1; i >= 0; i--) {
+                const eb = enemyBullets[i]; eb.position.add(eb.userData.velocity);
+                let ebHit = false;
+                obstacles.forEach(o => { if(Math.abs(eb.position.x - o.pos.x) < 4 && Math.abs(eb.position.z - o.pos.z) < 4 && eb.position.y < o.pos.y * 2) ebHit = true; });
+                
+                if (eb.position.distanceTo(camera.position) < 2) {
+                    ebHit = true; document.getElementById('damage-flash').style.boxShadow = "inset 0 0 100px rgba(255,0,0,1)";
+                    setTimeout(()=>document.getElementById('damage-flash').style.boxShadow="inset 0 0 100px rgba(255,0,0,0)", 100);
+                }
+                if(ebHit || eb.position.y < 0) { scene.remove(eb); enemyBullets.splice(i, 1); }
+            }
+
+            // 敵の挙動 & フェーズ遷移
+            if(phase === 1 && bots.length === 0) {
+                phase = 2; showMessage("PHASE 2: SEA & AIR INVASION", 4000);
+                spawnVehicle('boat'); spawnVehicle('boat'); spawnVehicle('heli'); updateUI();
+            } else if(phase === 2 && vehicles.length === 0) {
+                phase = 3; showMessage("PHASE 3: DESTROY THE HEAVY TANK", 5000);
+                spawnVehicle('tank'); updateUI();
+            }
+
+            vehicles.forEach(v => {
+                if(v.userData.type === 'boat') { v.position.z += 0.1; }
+                else if(v.userData.type === 'heli') { v.position.x = Math.sin(now*0.001)*50; v.position.z = -150 + Math.cos(now*0.001)*30; }
+                else if(v.userData.type === 'tank') { v.position.z = Math.min(-40, v.position.z + 0.05); }
+
+                if (now - v.userData.lastShoot > 2000) {
+                    v.userData.lastShoot = now;
+                    const eb = new THREE.Mesh(new THREE.SphereGeometry(0.4, 8, 8), new THREE.MeshBasicMaterial({ color: 0xff3300 }));
+                    eb.position.copy(v.position);
+                    const dir = new THREE.Vector3().subVectors(camera.position, v.position).normalize();
+                    eb.userData = { velocity: dir.multiplyScalar(1.2) };
+                    scene.add(eb); enemyBullets.push(eb);
                 }
             });
 
-            effects.forEach((ef, idx) => { ef.life -= 0.03; ef.obj.scale.addScalar(0.15); ef.obj.material.opacity = ef.life; if(ef.life <= 0){ scene.remove(ef.obj); effects.splice(idx,1); } });
+            // エフェクト更新
+            for(let i=effects.length-1; i>=0; i--) {
+                effects[i].life -= 0.03;
+                effects[i].obj.scale.addScalar(effects[i].scale);
+                effects[i].obj.material.opacity = effects[i].life;
+                if(effects[i].life <= 0) { scene.remove(effects[i].obj); effects.splice(i, 1); }
+            }
+
             renderer.render(scene, camera);
         }
         animate();
     </script>
 </body>
-</html>
+</html
