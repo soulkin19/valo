@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Mobile FPS - Anti-Flip Recoil</title>
+    <title>Mobile FPS - Phase 2: Combined Arms</title>
     <style>
         :root { --ui-color: #000; --ui-bg: rgba(255,255,255,0.9); }
         * { touch-action: none; -webkit-tap-highlight-color: transparent; }
@@ -61,6 +61,11 @@
             width: 50px; height: 50px; background: rgba(255,255,255,0.5); border-radius: 50%;
         }
 
+        #damage-flash {
+            position: absolute; width: 100%; height: 100%; pointer-events: none;
+            box-shadow: inset 0 0 100px rgba(255,0,0,0); transition: box-shadow 0.1s; z-index: 50;
+        }
+
         #start-overlay {
             position: absolute; width: 100%; height: 100%; background: rgba(0,0,0,0.9);
             display: flex; justify-content: center; align-items: center; color: #fff; z-index: 100;
@@ -68,6 +73,7 @@
     </style>
 </head>
 <body>
+    <div id="damage-flash"></div>
     <div id="start-overlay" onclick="start()">TOUCH TO START</div>
     <div id="msg"></div>
     <div id="crosshair"></div>
@@ -76,7 +82,7 @@
         SCORE: <span id="score">0</span><br>
         WEAPON: <span id="weapon-name">ASh-12</span><br>
         AMMO: <span id="ammo">30</span> / <span id="max-ammo">30</span><br>
-        MODE: <span id="ads-status">Hip Fire</span>
+        PHASE: <span id="phase">1 (Infantry)</span>
     </div>
 
     <div id="weapon-selector">
@@ -116,10 +122,10 @@
         sun.position.set(10, 20, 10);
         scene.add(sun);
 
-        const floor = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.MeshStandardMaterial({ color: 0x99cc99 }));
+        const floor = new THREE.Mesh(new THREE.PlaneGeometry(500, 500), new THREE.MeshStandardMaterial({ color: 0x99cc99 }));
         floor.rotation.x = -Math.PI / 2;
         scene.add(floor);
-        scene.add(new THREE.GridHelper(200, 40, 0x000000, 0x888888));
+        scene.add(new THREE.GridHelper(500, 100, 0x000000, 0x888888));
 
         const gunContainer = new THREE.Group();
         camera.add(gunContainer);
@@ -133,19 +139,44 @@
         sight.position.set(0.2, -0.17, -0.6);
         gunContainer.add(sight);
 
+        // --- 反動を少し強化 ---
         const weapons = {
-            '1': { name: "ASh-12", ammo: 30, maxAmmo: 30, rpm: 500, speed: 400, damage: 34, recoil: { y: 0.04, x: 0.01, spreadX: 0.02, speed: 0.1 } },
-            '2': { name: "HK416", ammo: 45, maxAmmo: 45, rpm: 880, speed: 600, damage: 21, recoil: { y: 0.02, x: -0.005, spreadX: 0.01, speed: 0.2 } },
-            '3': { name: "AS VAL", ammo: 45, maxAmmo: 45, rpm: 972, speed: 400, damage: 21, recoil: { y: 0.015, x: 0.005, spreadX: 0.01, speed: 0.2 } },
-            '4': { name: "Type 95", ammo: 30, maxAmmo: 30, rpm: 650, speed: 550, damage: 25, recoil: { y: 0.025, x: 0.005, spreadX: 0.01, speed: 0.15 } },
-            '5': { name: "M249", ammo: 100, maxAmmo: 100, rpm: 800, speed: 500, damage: 20, recoil: { y: 0.03, x: 0.01, spreadX: 0.005, speed: 0.1 } }
+            '1': { name: "ASh-12", ammo: 30, maxAmmo: 30, rpm: 500, speed: 400, damage: 34, recoil: { y: 0.08, x: 0.02, spreadX: 0.04, speed: 0.12 } },
+            '2': { name: "HK416", ammo: 45, maxAmmo: 45, rpm: 880, speed: 600, damage: 21, recoil: { y: 0.04, x: -0.01, spreadX: 0.02, speed: 0.2 } },
+            '3': { name: "AS VAL", ammo: 45, maxAmmo: 45, rpm: 972, speed: 400, damage: 21, recoil: { y: 0.03, x: 0.01, spreadX: 0.03, speed: 0.25 } },
+            '4': { name: "Type 95", ammo: 30, maxAmmo: 30, rpm: 650, speed: 550, damage: 25, recoil: { y: 0.05, x: 0.01, spreadX: 0.02, speed: 0.15 } },
+            '5': { name: "M249", ammo: 100, maxAmmo: 100, rpm: 800, speed: 500, damage: 20, recoil: { y: 0.06, x: 0.02, spreadX: 0.01, speed: 0.1 } }
         };
+
         let currentWep = weapons['1'];
-        let lastFireTime = 0, isReloading = false, isFiring = false, score = 0;
-        const bullets = [], bots = [];
+        let lastFireTime = 0, isReloading = false, isFiring = false, score = 0, phase = 1;
+        const bullets = [], enemyBullets = [], bots = [], vehicles = [];
         let isADS = false;
         const hipPos = new THREE.Vector3(0, 0, 0), adsPos = new THREE.Vector3(-0.2, 0.17, 0.1); 
+        let lon = 0, lat = 0, moveX = 0, moveZ = 0, currentRecoilY = 0, currentRecoilX = 0;
 
+        // UI 関連
+        function updateUI() {
+            document.getElementById('weapon-name').innerText = currentWep.name;
+            document.getElementById('ammo').innerText = currentWep.ammo;
+            document.getElementById('max-ammo').innerText = currentWep.maxAmmo;
+            document.getElementById('score').innerText = score;
+            document.getElementById('ads-status').innerText = isADS ? "ADS ON" : "Hip Fire";
+            document.getElementById('phase').innerText = phase === 1 ? "1 (Infantry)" : "2 (Heavy Armor)";
+            document.getElementById('crosshair').style.display = isADS ? 'none' : 'block';
+        }
+
+        function triggerDamage() {
+            score = Math.max(0, score - 50);
+            document.getElementById('damage-flash').style.boxShadow = "inset 0 0 100px rgba(255,0,0,1)";
+            setTimeout(() => { document.getElementById('damage-flash').style.boxShadow = "inset 0 0 100px rgba(255,0,0,0)"; }, 100);
+            updateUI();
+        }
+
+        // 武器切り替え
+        ['1','2','3','4','5'].forEach(id => {
+            document.getElementById('btn-'+id).addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); switchWeapon(id); });
+        });
         function switchWeapon(id) {
             if (isReloading) return;
             currentWep = weapons[id];
@@ -154,17 +185,14 @@
             updateUI();
         }
 
-        ['1','2','3','4','5'].forEach(id => {
-            document.getElementById('btn-'+id).addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); switchWeapon(id); });
-        });
-
-        function startReload() {
+        // リロード
+        document.getElementById('reload-btn').addEventListener('touchstart', (e) => { 
+            e.preventDefault(); e.stopPropagation(); 
             if (isReloading || currentWep.ammo === currentWep.maxAmmo) return;
             isReloading = true; isADS = false;
             document.getElementById('ads-btn').classList.remove('active');
             document.getElementById('msg').innerText = "RELOADING...";
             document.getElementById('msg').style.display = 'block';
-            updateUI();
             gunContainer.rotation.z = 0.5;
             setTimeout(() => {
                 currentWep.ammo = currentWep.maxAmmo;
@@ -172,28 +200,21 @@
                 document.getElementById('msg').style.display = 'none';
                 gunContainer.rotation.z = 0;
             }, 1200);
-        }
-        document.getElementById('reload-btn').addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); startReload(); });
-
-        document.getElementById('fire-btn').addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); if(!isReloading) isFiring = true; });
-        document.getElementById('fire-btn').addEventListener('touchend', (e) => { e.preventDefault(); e.stopPropagation(); isFiring = false; });
-        
-        document.getElementById('ads-btn').addEventListener('touchstart', (e) => { 
-            e.preventDefault(); e.stopPropagation(); 
-            if(!isReloading) {
-                isADS = !isADS;
-                if(isADS) document.getElementById('ads-btn').classList.add('active');
-                else document.getElementById('ads-btn').classList.remove('active');
-                updateUI();
-            }
         });
 
-        let lon = 0, lat = 0, moveX = 0, moveZ = 0;
+        // 射撃・ADS
+        document.getElementById('fire-btn').addEventListener('touchstart', (e) => { e.preventDefault(); isFiring = true; });
+        document.getElementById('fire-btn').addEventListener('touchend', (e) => { e.preventDefault(); isFiring = false; });
+        document.getElementById('ads-btn').addEventListener('touchstart', (e) => { 
+            e.preventDefault(); isADS = !isADS;
+            if(isADS) document.getElementById('ads-btn').classList.add('active');
+            else document.getElementById('ads-btn').classList.remove('active');
+            updateUI();
+        });
+
+        // モバイル操作
         const joystickBase = document.getElementById('joystick-base'), joystickStick = document.getElementById('joystick-stick');
         let moveTouchId = null, lookTouchId = null, touchStartX = 0, touchStartY = 0, lookPrevX = 0, lookPrevY = 0;
-        
-        // 反動制御用
-        let currentRecoilY = 0, currentRecoilX = 0;
 
         window.start = () => { document.getElementById('start-overlay').style.display = 'none'; };
 
@@ -202,13 +223,11 @@
                 if (t.clientX < window.innerWidth / 2 && moveTouchId === null) {
                     moveTouchId = t.identifier;
                     joystickBase.style.display = 'block';
-                    joystickBase.style.left = (t.clientX - 60) + 'px';
-                    joystickBase.style.top = (t.clientY - 60) + 'px';
+                    joystickBase.style.left = (t.clientX - 60) + 'px'; joystickBase.style.top = (t.clientY - 60) + 'px';
                     touchStartX = t.clientX; touchStartY = t.clientY;
                 } else if (t.clientX >= window.innerWidth / 2 && lookTouchId === null) {
                     if(t.clientY > window.innerHeight / 4 && t.clientY < window.innerHeight * 0.75) {
-                        lookTouchId = t.identifier;
-                        lookPrevX = t.clientX; lookPrevY = t.clientY;
+                        lookTouchId = t.identifier; lookPrevX = t.clientX; lookPrevY = t.clientY;
                     }
                 }
             }
@@ -225,10 +244,8 @@
                     moveX = Math.cos(angle) * (dist / 50); moveZ = Math.sin(angle) * (dist / 50);
                 }
                 if (t.identifier === lookTouchId) {
-                    let sensitivity = isADS ? 0.002 : 0.004;
-                    lon -= (t.clientX - lookPrevX) * sensitivity;
-                    lat -= (t.clientY - lookPrevY) * sensitivity;
-                    // プレイヤーの操作による視点制限（真上・真下）
+                    let sens = isADS ? 0.002 : 0.004;
+                    lon -= (t.clientX - lookPrevX) * sens; lat -= (t.clientY - lookPrevY) * sens;
                     lat = Math.max(-1.4, Math.min(1.4, lat));
                     lookPrevX = t.clientX; lookPrevY = t.clientY;
                 }
@@ -238,24 +255,41 @@
         window.addEventListener('touchend', (e) => {
             for (let t of e.changedTouches) {
                 if (t.identifier === moveTouchId) { moveTouchId = null; moveX = 0; moveZ = 0; joystickBase.style.display = 'none'; }
-                if (t.identifier === lookTouchId) { lookTouchId = null; }
+                if (t.identifier === lookTouchId) lookTouchId = null;
             }
         });
+
+        // オブジェクト生成関数
+        function spawnBot() {
+            const bot = new THREE.Mesh(new THREE.BoxGeometry(1, 2, 1), new THREE.MeshStandardMaterial({ color: 0xcc0000 }));
+            bot.position.set(Math.random()*100-50, 1, -Math.random()*100-20);
+            bot.hp = 100; scene.add(bot); bots.push(bot);
+        }
+
+        function spawnVehicle(type) {
+            let geometry, color, height;
+            if(type === 'boat') { geometry = new THREE.BoxGeometry(4, 1.5, 6); color = 0x00ffff; height = 0.75; }
+            else { geometry = new THREE.BoxGeometry(3, 2, 8); color = 0x555555; height = 15; }
+            const v = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ color: color }));
+            v.position.set(Math.random()*150-75, height, -100 - Math.random()*50);
+            v.userData = { type: type, hp: 500, lastShoot: 0, speed: Math.random() * 0.1 + 0.1 };
+            scene.add(v); vehicles.push(v);
+        }
+
+        for(let i=0; i<8; i++) spawnBot();
 
         function shoot() {
             const now = performance.now();
             if (now - lastFireTime < 60000/currentWep.rpm || currentWep.ammo <= 0 || isReloading) return;
             lastFireTime = now; currentWep.ammo--; updateUI();
             
-            gunContainer.position.z += isADS ? 0.02 : 0.04;
+            gunContainer.position.z += isADS ? 0.03 : 0.05;
             const r = currentWep.recoil;
             let adsMult = isADS ? 0.5 : 1.0;
-            
-            // 反動を累積させる
             currentRecoilY += r.y * adsMult;
             currentRecoilX += (r.x + (Math.random() - 0.5) * 2 * r.spreadX) * adsMult;
 
-            const b = new THREE.Mesh(new THREE.SphereGeometry(0.07, 4, 4), new THREE.MeshBasicMaterial({ color: 0xff0000 }));
+            const b = new THREE.Mesh(new THREE.SphereGeometry(0.1, 4, 4), new THREE.MeshBasicMaterial({ color: 0xff0000 }));
             b.position.copy(camera.position);
             const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
             b.velocity = dir.multiplyScalar(currentWep.speed / 400);
@@ -263,72 +297,90 @@
             scene.add(b); bullets.push(b);
         }
 
-        function updateUI() {
-            document.getElementById('weapon-name').innerText = currentWep.name;
-            document.getElementById('ammo').innerText = currentWep.ammo;
-            document.getElementById('max-ammo').innerText = currentWep.maxAmmo;
-            document.getElementById('score').innerText = score;
-            document.getElementById('ads-status').innerText = isADS ? "ADS ON" : "Hip Fire";
-            document.getElementById('crosshair').style.display = isADS ? 'none' : 'block';
-        }
-
-        for(let i=0; i<6; i++) {
-            const bot = new THREE.Mesh(new THREE.BoxGeometry(1, 2, 1), new THREE.MeshStandardMaterial({ color: 0xcc0000 }));
-            bot.position.set(Math.random()*40-20, 1, -Math.random()*30-5);
-            bot.hp = 100; scene.add(bot); bots.push(bot);
-        }
-
         function animate() {
             requestAnimationFrame(animate);
-            let targetPos = isADS ? adsPos : hipPos;
-            let targetFOV = isADS ? 50 : 75;
+            const now = performance.now();
 
-            gunContainer.position.x = THREE.MathUtils.lerp(gunContainer.position.x, targetPos.x, 0.15);
-            gunContainer.position.y = THREE.MathUtils.lerp(gunContainer.position.y, targetPos.y, 0.15);
-            gunContainer.position.z = THREE.MathUtils.lerp(gunContainer.position.z, targetPos.z, 0.1);
-            camera.fov = THREE.MathUtils.lerp(camera.fov, targetFOV, 0.15);
-            camera.updateProjectionMatrix();
+            // フェーズ切り替え
+            if (score >= 1000 && phase === 1) {
+                phase = 2;
+                document.getElementById('msg').innerText = "PHASE 2: HEAVY ARMOR ENGAGED";
+                document.getElementById('msg').style.display = 'block';
+                setTimeout(() => document.getElementById('msg').style.display = 'none', 3000);
+                spawnVehicle('boat'); spawnVehicle('heli');
+            }
 
-            // 反動の減衰処理
+            // 反動とカメラ
             currentRecoilY *= (1 - currentWep.recoil.speed);
             currentRecoilX *= (1 - currentWep.recoil.speed);
-
-            // 合計角度の計算。lat + 反動 が限界を超えないようにクランプ。
-            let finalLat = Math.max(-1.5, Math.min(1.5, lat + currentRecoilY));
-            let finalLon = lon + currentRecoilX;
+            camera.quaternion.setFromEuler(new THREE.Euler(Math.max(-1.5, Math.min(1.5, lat + currentRecoilY)), lon + currentRecoilX, 0, 'YXZ'));
             
-            camera.quaternion.setFromEuler(new THREE.Euler(finalLat, finalLon, 0, 'YXZ'));
+            gunContainer.position.lerp(isADS ? adsPos : hipPos, 0.15);
+            camera.fov = THREE.MathUtils.lerp(camera.fov, isADS ? 50 : 75, 0.15);
+            camera.updateProjectionMatrix();
 
             if (isFiring) shoot();
 
+            // 移動
             if (moveTouchId !== null) {
                 const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
                 forward.y = 0; forward.normalize();
                 const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
                 right.y = 0; right.normalize();
-                let speedMult = isADS ? 0.08 : 0.15;
-                camera.position.addScaledVector(forward, -moveZ * speedMult);
-                camera.position.addScaledVector(right, moveX * speedMult);
+                camera.position.addScaledVector(forward, -moveZ * (isADS ? 0.08 : 0.15));
+                camera.position.addScaledVector(right, moveX * (isADS ? 0.08 : 0.15));
             }
-            camera.position.y = 1.6;
 
+            // プレイヤーの弾
             for (let i = bullets.length - 1; i >= 0; i--) {
                 const b = bullets[i]; b.position.add(b.velocity);
                 bots.forEach(bot => {
-                    if (b.position.distanceTo(bot.position) < 1.2) {
+                    if (b.position.distanceTo(bot.position) < 1.5) {
                         bot.hp -= b.damage; scene.remove(b); bullets.splice(i, 1);
-                        if (bot.hp <= 0) {
-                            bot.position.set(Math.random()*40-20, 1, -Math.random()*40); bot.hp = 100;
-                            score += 100; updateUI();
-                        }
+                        if (bot.hp <= 0) { bot.position.set(Math.random()*100-50, 1, -Math.random()*100); bot.hp = 100; score += 100; updateUI(); }
                     }
                 });
-                if(b.position.distanceTo(camera.position) > 80) { scene.remove(b); bullets.splice(i, 1); }
+                vehicles.forEach((v, vIdx) => {
+                    if (b.position.distanceTo(v.position) < 4) {
+                        v.userData.hp -= b.damage; scene.remove(b); bullets.splice(i, 1);
+                        if (v.userData.hp <= 0) { scene.remove(v); vehicles.splice(vIdx, 1); score += 1000; updateUI(); spawnVehicle(v.userData.type); }
+                    }
+                });
+                if(b.position.length() > 300) { scene.remove(b); bullets.splice(i, 1); }
             }
-            bots.forEach(bot => {
-                const moveDir = new THREE.Vector3().subVectors(camera.position, bot.position);
-                moveDir.y = 0; bot.position.add(moveDir.normalize().multiplyScalar(0.04));
+
+            // 敵の攻撃ロジック
+            vehicles.forEach(v => {
+                const dist = v.position.distanceTo(camera.position);
+                // 移動AI
+                if(v.userData.type === 'boat') { v.position.x += Math.sin(now * 0.001) * 0.2; v.position.z += v.userData.speed * 2; if(v.position.z > 50) v.position.z = -150; }
+                else { v.position.x = Math.cos(now * 0.0005) * 100; v.position.z = Math.sin(now * 0.0005) * 100 - 50; }
+
+                // 攻撃AI
+                if (now - v.userData.lastShoot > (v.userData.type === 'boat' ? 1000 : 3000) && dist < 150) {
+                    v.userData.lastShoot = now;
+                    const eb = new THREE.Mesh(new THREE.SphereGeometry(v.userData.type === 'boat' ? 0.3 : 1, 8, 8), 
+                             new THREE.MeshBasicMaterial({ color: v.userData.type === 'boat' ? 0xff3300 : 0x00ffff }));
+                    eb.position.copy(v.position);
+                    const dir = new THREE.Vector3().subVectors(camera.position, v.position).normalize();
+                    eb.velocity = dir.multiplyScalar(v.userData.type === 'boat' ? 1.5 : 0.8);
+                    scene.add(eb); enemyBullets.push(eb);
+                }
             });
+
+            // 敵弾の衝突判定
+            for (let i = enemyBullets.length - 1; i >= 0; i--) {
+                const eb = enemyBullets[i]; eb.position.add(eb.velocity);
+                if (eb.position.distanceTo(camera.position) < 2) { scene.remove(eb); enemyBullets.splice(i, 1); triggerDamage(); }
+                else if (eb.position.y < 0 || eb.position.length() > 500) { scene.remove(eb); enemyBullets.splice(i, 1); }
+            }
+
+            // 歩兵AI
+            bots.forEach(bot => {
+                const dir = new THREE.Vector3().subVectors(camera.position, bot.position);
+                dir.y = 0; bot.position.add(dir.normalize().multiplyScalar(0.04));
+            });
+
             renderer.render(scene, camera);
         }
         animate();
