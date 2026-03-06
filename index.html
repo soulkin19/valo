@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Mobile Final FPS</title>
+    <title>Mobile Combat FPS - Fixed</title>
     <style>
         :root { --ui-color: #000; --ui-bg: rgba(255,255,255,0.9); }
         body { margin: 0; overflow: hidden; background: #eee; touch-action: none; font-family: sans-serif; -webkit-user-select: none; user-select: none; }
@@ -17,7 +17,7 @@
         #ui {
             position: absolute; top: 20px; left: 20px;
             color: var(--ui-color); background: var(--ui-bg); 
-            padding: 10px; border-radius: 8px; border: 2px solid #333; z-index: 11; font-size: 14px;
+            padding: 12px; border-radius: 8px; border: 2px solid #333; z-index: 11; font-size: 14px;
         }
         
         #msg {
@@ -25,26 +25,33 @@
             color: #f00; font-size: 24px; pointer-events: none; font-weight: bold; display: none; z-index: 12;
         }
 
-        /* 武器切り替えボタン（右側） */
+        /* 武器切り替えボタン */
         #weapon-selector {
             position: absolute; top: 20px; right: 20px;
-            display: flex; flex-direction: column; gap: 5px; z-index: 20;
+            display: flex; flex-direction: column; gap: 8px; z-index: 30;
         }
         #weapon-selector button {
-            background: var(--ui-bg); border: 2px solid #333; padding: 10px;
-            border-radius: 5px; font-weight: bold; font-size: 12px;
+            background: var(--ui-bg); border: 2px solid #333; padding: 12px;
+            border-radius: 8px; font-weight: bold; font-size: 14px; pointer-events: auto;
         }
         #weapon-selector button.active { background: #333; color: #fff; }
 
-        /* リロードボタン（右下） */
-        #reload-btn {
-            position: absolute; bottom: 40px; right: 40px;
-            width: 80px; height: 80px; border-radius: 50%;
-            background: rgba(255,0,0,0.6); color: white; border: 3px solid #fff;
-            font-weight: bold; display: flex; justify-content: center; align-items: center; z-index: 20;
+        /* 操作ボタン（右下） */
+        #controls-right {
+            position: absolute; bottom: 30px; right: 30px;
+            display: flex; flex-direction: column; align-items: center; gap: 20px; z-index: 30;
         }
+        .action-btn {
+            width: 90px; height: 90px; border-radius: 50%;
+            border: 4px solid #fff; font-weight: bold; font-size: 16px;
+            display: flex; justify-content: center; align-items: center;
+            color: white; pointer-events: auto; box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        }
+        #fire-btn { background: rgba(255, 0, 0, 0.7); }
+        #fire-btn:active { background: rgba(255, 0, 0, 1); transform: scale(0.9); }
+        #reload-btn { background: rgba(0, 0, 255, 0.6); width: 70px; height: 70px; font-size: 12px; }
 
-        /* 仮想ジョイスティック（左下） */
+        /* ジョイスティック */
         #joystick-base {
             position: absolute; bottom: 50px; left: 50px;
             width: 120px; height: 120px; background: rgba(0,0,0,0.2);
@@ -52,19 +59,17 @@
         }
         #joystick-stick {
             position: absolute; top: 35px; left: 35px;
-            width: 50px; height: 50px; background: rgba(255,255,255,0.5);
-            border-radius: 50%;
+            width: 50px; height: 50px; background: rgba(255,255,255,0.5); border-radius: 50%;
         }
 
         #start-overlay {
             position: absolute; width: 100%; height: 100%; background: rgba(0,0,0,0.9);
-            display: flex; justify-content: center; align-items: center; color: #fff;
-            font-size: 24px; z-index: 100;
+            display: flex; justify-content: center; align-items: center; color: #fff; z-index: 100;
         }
     </style>
 </head>
 <body>
-    <div id="start-overlay">TOUCH TO START</div>
+    <div id="start-overlay" onclick="start()">TOUCH TO START</div>
     <div id="msg"></div>
     <div id="crosshair"></div>
     
@@ -75,14 +80,17 @@
     </div>
 
     <div id="weapon-selector">
-        <button onclick="switchWeapon('1')" id="btn-1" class="active">ASh-12</button>
-        <button onclick="switchWeapon('2')" id="btn-2">HK416</button>
-        <button onclick="switchWeapon('3')" id="btn-3">AS VAL</button>
-        <button onclick="switchWeapon('4')" id="btn-4">Type 95</button>
-        <button onclick="switchWeapon('5')" id="btn-5">M249</button>
+        <button id="btn-1" class="active">ASh-12</button>
+        <button id="btn-2">HK416</button>
+        <button id="btn-3">AS VAL</button>
+        <button id="btn-4">Type 95</button>
+        <button id="btn-5">M249</button>
     </div>
 
-    <div id="reload-btn" onclick="reload()">RELOAD</div>
+    <div id="controls-right">
+        <div id="reload-btn" class="action-btn">RELOAD</div>
+        <div id="fire-btn" class="action-btn">FIRE</div>
+    </div>
 
     <div id="joystick-base"><div id="joystick-stick"></div></div>
 
@@ -93,7 +101,6 @@
     <script type="module">
         import * as THREE from 'three';
 
-        // --- シーン基本設定 ---
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x87ceeb);
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.01, 1000);
@@ -113,7 +120,6 @@
         scene.add(floor);
         scene.add(new THREE.GridHelper(200, 40, 0x000000, 0x888888));
 
-        // 銃コンテナ
         const gunContainer = new THREE.Group();
         camera.add(gunContainer);
         scene.add(camera);
@@ -122,7 +128,6 @@
         body.position.set(0.2, -0.25, -0.4);
         gunContainer.add(body);
 
-        // --- 武器スペック ---
         const weapons = {
             '1': { name: "ASh-12", ammo: 30, maxAmmo: 30, rpm: 500, speed: 400, damage: 34 },
             '2': { name: "HK416", ammo: 45, maxAmmo: 45, rpm: 880, speed: 600, damage: 21 },
@@ -133,18 +138,28 @@
         let currentWep = weapons['1'];
         let lastFireTime = 0;
         let isReloading = false;
+        let isFiring = false;
         let score = 0;
         const bullets = [];
         const bots = [];
 
-        window.switchWeapon = (id) => {
+        // 武器変更処理の修正（onclickではなくEvent Listenerで確実に）
+        function switchWeapon(id) {
+            if (isReloading) return;
             currentWep = weapons[id];
             document.querySelectorAll('#weapon-selector button').forEach(b => b.classList.remove('active'));
             document.getElementById('btn-'+id).classList.add('active');
             updateUI();
-        };
+        }
 
-        window.reload = () => {
+        document.getElementById('btn-1').addEventListener('touchstart', (e) => { e.stopPropagation(); switchWeapon('1'); });
+        document.getElementById('btn-2').addEventListener('touchstart', (e) => { e.stopPropagation(); switchWeapon('2'); });
+        document.getElementById('btn-3').addEventListener('touchstart', (e) => { e.stopPropagation(); switchWeapon('3'); });
+        document.getElementById('btn-4').addEventListener('touchstart', (e) => { e.stopPropagation(); switchWeapon('4'); });
+        document.getElementById('btn-5').addEventListener('touchstart', (e) => { e.stopPropagation(); switchWeapon('5'); });
+
+        // リロード処理
+        function startReload() {
             if (isReloading || currentWep.ammo === currentWep.maxAmmo) return;
             isReloading = true;
             document.getElementById('msg').innerText = "RELOADING...";
@@ -157,36 +172,40 @@
                 document.getElementById('msg').style.display = 'none';
                 gunContainer.rotation.z = 0;
             }, 1200);
-        };
+        }
+        document.getElementById('reload-btn').addEventListener('touchstart', (e) => { e.stopPropagation(); startReload(); });
+
+        // 射撃ボタン
+        const fireBtn = document.getElementById('fire-btn');
+        fireBtn.addEventListener('touchstart', (e) => { e.stopPropagation(); isFiring = true; });
+        fireBtn.addEventListener('touchend', (e) => { e.stopPropagation(); isFiring = false; });
 
         // --- モバイル操作ロジック ---
         let lon = 0, lat = 0;
-        let moveX = 0, moveZ = 0; // ジョイスティックによる移動量
+        let moveX = 0, moveZ = 0;
         const joystickBase = document.getElementById('joystick-base');
         const joystickStick = document.getElementById('joystick-stick');
+        let moveTouchId = null, lookTouchId = null;
+        let touchStartX = 0, touchStartY = 0, lookPrevX = 0, lookPrevY = 0;
 
-        let lookTouchId = null;
-        let moveTouchId = null;
-        let touchStartX = 0, touchStartY = 0;
-        let lookPrevX = 0, lookPrevY = 0;
+        window.start = () => { document.getElementById('start-overlay').style.display = 'none'; };
 
         window.addEventListener('touchstart', (e) => {
-            document.getElementById('start-overlay').style.display = 'none';
             for (let t of e.changedTouches) {
-                if (t.clientX < window.innerWidth / 2) { // 左半分：移動
+                // 左半分：移動
+                if (t.clientX < window.innerWidth / 2 && moveTouchId === null) {
                     moveTouchId = t.identifier;
                     joystickBase.style.display = 'block';
                     joystickBase.style.left = (t.clientX - 60) + 'px';
-                    joystickBase.style.bottom = (window.innerHeight - t.clientY - 60) + 'px';
+                    joystickBase.style.top = (t.clientY - 60) + 'px';
                     touchStartX = t.clientX;
                     touchStartY = t.clientY;
-                } else { // 右半分：視点・射撃
+                } 
+                // 右半分（ボタンエリア以外）：視点
+                else if (t.clientX >= window.innerWidth / 2 && lookTouchId === null) {
                     lookTouchId = t.identifier;
                     lookPrevX = t.clientX;
                     lookPrevY = t.clientY;
-                    // 短いタップ判定用に開始時間を保持しても良いが、ここではシンプルに
-                    setTimeout(() => { if (lookTouchId === t.identifier) isMovingView = true; }, 100);
-                    var isMovingView = false;
                 }
             }
         });
@@ -194,25 +213,18 @@
         window.addEventListener('touchmove', (e) => {
             for (let t of e.changedTouches) {
                 if (t.identifier === moveTouchId) {
-                    let dx = t.clientX - touchStartX;
-                    let dy = t.clientY - touchStartY;
+                    let dx = t.clientX - touchStartX, dy = t.clientY - touchStartY;
                     const dist = Math.min(Math.sqrt(dx*dx + dy*dy), 50);
                     const angle = Math.atan2(dy, dx);
-                    
                     joystickStick.style.transform = `translate(${Math.cos(angle)*dist}px, ${Math.sin(angle)*dist}px)`;
-                    
-                    // 移動ベクトルを算出
                     moveX = Math.cos(angle) * (dist / 50);
                     moveZ = Math.sin(angle) * (dist / 50);
                 }
                 if (t.identifier === lookTouchId) {
-                    const dx = t.clientX - lookPrevX;
-                    const dy = t.clientY - lookPrevY;
-                    lon -= dx * 0.005;
-                    lat -= dy * 0.005;
+                    lon -= (t.clientX - lookPrevX) * 0.005;
+                    lat -= (t.clientY - lookPrevY) * 0.005;
                     lat = Math.max(-1.5, Math.min(1.5, lat));
-                    lookPrevX = t.clientX;
-                    lookPrevY = t.clientY;
+                    lookPrevX = t.clientX; lookPrevY = t.clientY;
                 }
             }
         });
@@ -220,17 +232,10 @@
         window.addEventListener('touchend', (e) => {
             for (let t of e.changedTouches) {
                 if (t.identifier === moveTouchId) {
-                    moveTouchId = null;
-                    moveX = 0; moveZ = 0;
+                    moveTouchId = null; moveX = 0; moveZ = 0;
                     joystickBase.style.display = 'none';
-                    joystickStick.style.transform = 'translate(0,0)';
                 }
-                if (t.identifier === lookTouchId) {
-                    // 右側をタップ（スワイプ量小）なら射撃
-                    const dist = Math.sqrt(Math.pow(t.clientX - lookPrevX, 2));
-                    if (dist < 10) shoot();
-                    lookTouchId = null;
-                }
+                if (t.identifier === lookTouchId) { lookTouchId = null; }
             }
         });
 
@@ -270,19 +275,18 @@
             camera.quaternion.setFromEuler(new THREE.Euler(lat, lon, 0, 'YXZ'));
             gunContainer.position.z = THREE.MathUtils.lerp(gunContainer.position.z, 0, 0.1);
 
-            // ジョイスティック移動
+            if (isFiring) shoot();
+
             if (moveTouchId !== null) {
                 const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
                 forward.y = 0; forward.normalize();
                 const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
                 right.y = 0; right.normalize();
-
                 camera.position.addScaledVector(forward, -moveZ * 0.15);
                 camera.position.addScaledVector(right, moveX * 0.15);
             }
             camera.position.y = 1.6;
 
-            // 弾丸更新
             for (let i = bullets.length - 1; i >= 0; i--) {
                 const b = bullets[i]; b.position.add(b.velocity);
                 bots.forEach(bot => {
