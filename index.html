@@ -59,11 +59,9 @@
         scene.add(new THREE.AmbientLight(0xffffff, 0.6));
         const sun = new THREE.DirectionalLight(0xffffff, 1.2); sun.position.set(50, 100, 50); scene.add(sun);
 
-        // フィールド構築
         const floor = new THREE.Mesh(new THREE.PlaneGeometry(1000, 1000), new THREE.MeshStandardMaterial({ color: 0x334433 }));
         floor.rotation.x = -Math.PI / 2; scene.add(floor);
         
-        // 遠景の山とビル
         for(let i=0; i<40; i++) {
             const h = Math.random()*20+5;
             const b = new THREE.Mesh(new THREE.BoxGeometry(5, h, 5), new THREE.MeshStandardMaterial({color: 0x222222}));
@@ -83,11 +81,11 @@
         sight.position.set(0.2, -0.17, -0.6); gunContainer.add(sight);
 
         const weapons = {
-            '1': { name: "ASh-12", ammo: 20, maxAmmo: 20, rpm: 450, speed: 6, damage: 60, recoil: { y: 0.4, x: 0.05, spreadX: 0.1, speed: 0.08 } },
-            '2': { name: "HK416", ammo: 30, maxAmmo: 30, rpm: 850, speed: 8, damage: 24, recoil: { y: 0.15, x: -0.02, spreadX: 0.04, speed: 0.18 } },
-            '3': { name: "AS VAL", ammo: 30, maxAmmo: 30, rpm: 900, speed: 3.5, damage: 28, gravity: 0.01, recoil: { y: 0.12, x: 0.01, spreadX: 0.06, speed: 0.22 } },
-            '4': { name: "Type 95", ammo: 30, maxAmmo: 30, rpm: 700, speed: 7, damage: 30, burst: 3, recoil: { y: 0.1, x: 0.01, spreadX: 0.02, speed: 0.15 } },
-            '5': { name: "M249", ammo: 100, maxAmmo: 100, rpm: 900, speed: 7, damage: 22, heat: true, recoil: { y: 0.3, x: 0.06, spreadX: 0.12, speed: 0.05 } }
+            '1': { name: "ASh-12", ammo: 20, maxAmmo: 20, rpm: 450, speed: 6, damage: 150, recoil: { y: 0.4, x: 0.05, spreadX: 0.1, speed: 0.08 } },
+            '2': { name: "HK416", ammo: 30, maxAmmo: 30, rpm: 850, speed: 8, damage: 35, recoil: { y: 0.15, x: -0.02, spreadX: 0.04, speed: 0.18 } },
+            '3': { name: "AS VAL", ammo: 30, maxAmmo: 30, rpm: 900, speed: 4.5, damage: 40, gravity: 0.01, recoil: { y: 0.12, x: 0.01, spreadX: 0.06, speed: 0.22 } },
+            '4': { name: "Type 95", ammo: 30, maxAmmo: 30, rpm: 700, speed: 7, damage: 45, burst: 3, recoil: { y: 0.1, x: 0.01, spreadX: 0.02, speed: 0.15 } },
+            '5': { name: "M249", ammo: 100, maxAmmo: 100, rpm: 900, speed: 7, damage: 30, heat: true, recoil: { y: 0.2, x: 0.04, spreadX: 0.08, speed: 0.06 } }
         };
 
         let currentWep = weapons['1'], lastFireTime = 0, isReloading = false, isFiring = false, score = 0, phase = 1, continuousFire = 0;
@@ -171,8 +169,8 @@
             lastFireTime = now; currentWep.ammo--; continuousFire++; updateUI();
             
             let adsMult = isADS ? 0.5 : 1.0;
-            // M249の撃ち続け安定化
-            let heatMult = currentWep.heat ? Math.max(0.3, 1 - (continuousFire * 0.02)) : 1.0;
+            // M249の撃ち続け安定化 (大幅強化)
+            let heatMult = currentWep.heat ? Math.max(0.1, 1 - (continuousFire * 0.05)) : 1.0;
 
             currentRecoilY += currentWep.recoil.y * adsMult * heatMult;
             currentRecoilX += (currentWep.recoil.x + (Math.random()-0.5)*2*currentWep.recoil.spreadX) * adsMult * heatMult;
@@ -186,23 +184,31 @@
 
         function spawnVehicle(type) {
             const group = new THREE.Group();
-            const bodyV = new THREE.Mesh(new THREE.BoxGeometry(type==='boat'?5:4, 2, 8), new THREE.MeshStandardMaterial({ color: type==='boat'?0x224466:0x333333 }));
-            group.add(bodyV);
-            
-            // ヘリのプロペラ
-            if(type==='heli') {
-                const prop = new THREE.Mesh(new THREE.BoxGeometry(12, 0.1, 0.5), new THREE.MeshStandardMaterial({color:0x000000}));
-                prop.position.y = 2; prop.name = "prop"; group.add(prop);
+            if(type === 'boat') {
+                const hull = new THREE.Mesh(new THREE.BoxGeometry(5, 1.5, 9), new THREE.MeshStandardMaterial({color: 0x1a2b3c}));
+                const cabin = new THREE.Mesh(new THREE.BoxGeometry(3, 1.5, 3), new THREE.MeshStandardMaterial({color: 0x333333}));
+                cabin.position.set(0, 1.5, -1); group.add(hull, cabin);
+            } else {
+                const bodyH = new THREE.Mesh(new THREE.BoxGeometry(3, 2.5, 9), new THREE.MeshStandardMaterial({color: 0x2d3436}));
+                const cockpit = new THREE.Mesh(new THREE.BoxGeometry(2.5, 1.8, 2.5), new THREE.MeshStandardMaterial({color: 0x0984e3, transparent: true, opacity: 0.7}));
+                cockpit.position.set(0, 0.2, -3.5);
+                const tail = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 6), new THREE.MeshStandardMaterial({color: 0x2d3436}));
+                tail.position.set(0, 0.5, 6);
+                const prop = new THREE.Mesh(new THREE.BoxGeometry(14, 0.1, 0.8), new THREE.MeshStandardMaterial({color: 0x000000}));
+                prop.position.y = 1.8; prop.name = "prop"; group.add(bodyH, cockpit, tail, prop);
             }
-
-            group.position.set(Math.random()*200-100, type === 'boat'?1:25, -200);
-            group.userData = { type: type, hp: type==='heli'?350:600, lastShoot: 0 };
+            group.position.set(Math.random()*200-100, type === 'boat'?0.8:25, -200);
+            group.userData = { type: type, hp: type==='heli'?180:350, lastShoot: 0 };
             scene.add(group); vehicles.push(group);
         }
 
         for(let i=0; i<10; i++) {
-            const bot = new THREE.Mesh(new THREE.BoxGeometry(1, 2, 1), new THREE.MeshStandardMaterial({ color: 0xcc0000 }));
-            bot.position.set(Math.random()*150-75, 1, -Math.random()*100-30); bot.hp = 100; scene.add(bot); bots.push(bot);
+            const botGroup = new THREE.Group();
+            const bodyB = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.4, 0.5), new THREE.MeshStandardMaterial({ color: 0x2d3436 }));
+            const headB = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), new THREE.MeshStandardMaterial({ color: 0xcc0000 }));
+            headB.position.y = 1.1; botGroup.add(bodyB, headB);
+            botGroup.position.set(Math.random()*150-75, 0.7, -Math.random()*100-30); 
+            botGroup.userData = { hp: 100 }; scene.add(botGroup); bots.push(botGroup);
         }
 
         function animate() {
@@ -228,27 +234,21 @@
                 camera.position.addScaledVector(forward, -moveZ*0.15); camera.position.addScaledVector(right, moveX*0.15);
             }
 
-            // エフェクト管理
             for(let i=effects.length-1; i>=0; i--) {
                 effects[i].life -= 0.05;
-                effects[i].obj.scale.addScalar(0.1);
+                effects[i].obj.scale.addScalar(0.15);
                 effects[i].obj.material.opacity = effects[i].life;
                 if(effects[i].life <= 0) { scene.remove(effects[i].obj); effects.splice(i, 1); }
             }
 
-            // 弾丸処理
             for (let i = bullets.length - 1; i >= 0; i--) {
-                const b = bullets[i]; 
-                b.userData.velocity.y -= b.userData.gravity; // 重力
-                b.position.add(b.userData.velocity);
-                
-                bots.forEach(bot => { if (b.position.distanceTo(bot.position) < 1.5) { bot.hp -= b.userData.damage; scene.remove(b); bullets.splice(i, 1); if (bot.hp <= 0) { bot.position.set(Math.random()*150-75, 1, -Math.random()*100-30); bot.hp = 100; score += 100; updateUI(); } } });
-                
+                const b = bullets[i]; b.userData.velocity.y -= b.userData.gravity; b.position.add(b.userData.velocity);
+                bots.forEach(bot => { if (b.position.distanceTo(bot.position) < 1.5) { bot.userData.hp -= b.userData.damage; scene.remove(b); bullets.splice(i, 1); if (bot.userData.hp <= 0) { bot.position.set(Math.random()*150-75, 0.7, -Math.random()*100-30); bot.userData.hp = 100; score += 100; updateUI(); } } });
                 vehicles.forEach((v, vIdx) => { 
                     if (b.position.distanceTo(v.position) < 5) { 
                         v.userData.hp -= b.userData.damage; scene.remove(b); bullets.splice(i, 1);
                         if (v.userData.hp <= 0) { 
-                            createExplosion(v.position, 0xffaa00, 8);
+                            createExplosion(v.position, 0xffaa00, 10);
                             scene.remove(v); vehicles.splice(vIdx, 1); score += 1000; updateUI(); spawnVehicle(v.userData.type); 
                         }
                     } 
@@ -260,10 +260,9 @@
                 if(v.userData.type === 'boat') { v.position.x += Math.sin(now*0.001)*0.2; v.position.z += 0.3; if(v.position.z > 50) v.position.z = -200; }
                 else { 
                     v.position.x = Math.cos(now*0.0005)*80; v.position.z = Math.sin(now*0.0005)*80-50; 
-                    v.getObjectByName("prop").rotation.y += 0.5;
+                    const p = v.getObjectByName("prop"); if(p) p.rotation.y += 0.6;
                 }
-                
-                if (now - v.userData.lastShoot > (v.userData.type==='boat'?2000:1200)) {
+                if (now - v.userData.lastShoot > (v.userData.type==='boat'?2500:1500)) {
                     v.userData.lastShoot = now; 
                     const eb = new THREE.Mesh(new THREE.SphereGeometry(0.6, 8, 8), new THREE.MeshBasicMaterial({ color: 0xff3300 }));
                     eb.position.copy(v.position); 
@@ -276,13 +275,12 @@
                 const eb = enemyBullets[i]; eb.position.add(eb.userData.velocity);
                 if (eb.position.distanceTo(camera.position) < 2.5) { 
                     createExplosion(camera.position, 0xff0000, 1);
-                    scene.remove(eb); enemyBullets.splice(i, 1); score = Math.max(0, score-100); 
+                    scene.remove(eb); enemyBullets.splice(i, 1); 
                     document.getElementById('damage-flash').style.boxShadow = "inset 0 0 100px rgba(255,0,0,1)"; 
-                    setTimeout(()=>document.getElementById('damage-flash').style.boxShadow="inset 0 0 100px rgba(255,0,0,0)", 100); updateUI(); 
+                    setTimeout(()=>document.getElementById('damage-flash').style.boxShadow="inset 0 0 100px rgba(255,0,0,0)", 100);
                 }
                 else if (eb.position.y < 0 || eb.position.length() > 500) { scene.remove(eb); enemyBullets.splice(i, 1); }
             }
-
             bots.forEach(bot => { const dir = new THREE.Vector3().subVectors(camera.position, bot.position); dir.y = 0; bot.position.add(dir.normalize().multiplyScalar(0.06)); });
             renderer.render(scene, camera);
         }
