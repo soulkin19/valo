@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Mobile FPS - Tactical Update v3</title>
+    <title>Mobile FPS - Tactical Reload Pro</title>
     <style>
         :root { --ui-color: #000; --ui-bg: rgba(255,255,255,0.9); }
         * { touch-action: none; -webkit-tap-highlight-color: transparent; }
@@ -117,13 +117,12 @@
             setTimeout(() => m.style.display = 'none', time);
         }
 
-        // 爆破を少し小さく調整
         function createExplosion(pos, color=0xffaa00, size=1.5) {
             for(let i=0; i<6; i++) {
-                const s = new THREE.Mesh(new THREE.SphereGeometry(size * 0.5, 6, 6), new THREE.MeshBasicMaterial({ color: color, transparent: true, opacity: 0.8 }));
+                const s = new THREE.Mesh(new THREE.SphereGeometry(size * 0.4, 6, 6), new THREE.MeshBasicMaterial({ color: color, transparent: true, opacity: 0.8 }));
                 s.position.copy(pos).add(new THREE.Vector3(Math.random()-0.5, Math.random()-0.5, Math.random()-0.5).multiplyScalar(size));
                 scene.add(s);
-                effects.push({ obj: s, life: 0.8, scale: 0.05 });
+                effects.push({ obj: s, life: 0.7, scale: 0.04 });
             }
         }
 
@@ -134,7 +133,7 @@
             let adsMult = isADS ? 0.4 : 1.0;
             currentRecoilY += currentWep.recoil.y * adsMult;
             currentRecoilX += (Math.random()-0.5) * currentWep.recoil.x;
-            const bSize = currentWep.isRocket ? 0.3 : 0.1;
+            const bSize = currentWep.isRocket ? 0.25 : 0.1;
             const b = new THREE.Mesh(new THREE.SphereGeometry(bSize, 8, 8), new THREE.MeshBasicMaterial({ color: currentWep.isRocket?0xff6600:0xffffcc }));
             const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
             b.position.copy(camera.position).add(dir.clone().multiplyScalar(1.2));
@@ -221,17 +220,44 @@
             camera.quaternion.setFromEuler(new THREE.Euler(lat + currentRecoilY, lon + currentRecoilX, 0, 'YXZ'));
             camera.fov = THREE.MathUtils.lerp(camera.fov, isADS ? 40 : 75, 0.2); camera.updateProjectionMatrix();
 
-            // 凝ったリロード演出
-            let reloadY = 0, reloadZ = 0;
+            // 超凝ったタクティカルリロード演出
+            let rP = new THREE.Vector3(0,0,0);
+            let rR = new THREE.Euler(0,0,0);
+            
             if(isReloading) {
-                reloadProgress += 0.02;
-                if(reloadProgress < 0.3) { reloadY = -0.5 * (reloadProgress/0.3); reloadZ = 0.5 * (reloadProgress/0.3); }
-                else if(reloadProgress < 0.7) { reloadY = -0.5; reloadZ = 0.5 + Math.sin(now*0.05)*0.05; }
-                else if(reloadProgress < 1.0) { reloadY = -0.5 * (1-(reloadProgress-0.7)/0.3); reloadZ = 0.5 * (1-(reloadProgress-0.7)/0.3); }
-                else { isReloading = false; currentWep.ammo = currentWep.maxAmmo; updateUI(); }
+                reloadProgress += 0.015; // 少しゆっくりめに
+                const t = reloadProgress;
+                
+                if(t < 0.2) { // 1. 銃を斜め下に下げる & 傾ける
+                    const stage = t / 0.2;
+                    rP.set(0.1 * stage, -0.4 * stage, 0.2 * stage);
+                    rR.set(-0.2 * stage, 0.3 * stage, 0.6 * stage);
+                } else if(t < 0.4) { // 2. マガジンを抜くアクション (少し揺れる)
+                    const stage = (t - 0.2) / 0.2;
+                    rP.set(0.1, -0.4 + Math.sin(stage * Math.PI) * 0.05, 0.2);
+                    rR.set(-0.2, 0.3, 0.6 + Math.sin(stage * Math.PI) * 0.1);
+                } else if(t < 0.6) { // 3. 新しいマガジンを準備 (ホールド)
+                    rP.set(0.1, -0.4, 0.2);
+                    rR.set(-0.2, 0.3, 0.6);
+                } else if(t < 0.8) { // 4. マガジンを叩き込む！ (ガシャッという衝撃)
+                    const stage = (t - 0.6) / 0.2;
+                    const bump = Math.pow(1 - stage, 2) * 0.15; // 衝撃の余韻
+                    rP.set(0.1, -0.4 + stage * 0.3, 0.2 - stage * 0.1);
+                    rR.set(-0.2 + stage * 0.1, 0.3 - stage * 0.2, 0.6 - stage * 0.4 - bump);
+                } else if(t < 1.0) { // 5. 構え直し
+                    const stage = (t - 0.8) / 0.2;
+                    rP.set(0.1 * (1-stage), -0.1 * (1-stage), 0.1 * (1-stage));
+                    rR.set(-0.1 * (1-stage), 0.1 * (1-stage), 0.2 * (1-stage));
+                } else { 
+                    isReloading = false; currentWep.ammo = currentWep.maxAmmo; updateUI(); 
+                }
             }
-            gunContainer.position.lerp(isADS ? new THREE.Vector3(-0.2, 0.16, 0.1) : new THREE.Vector3(0, reloadY, reloadZ), 0.2);
-            gunContainer.rotation.x = THREE.MathUtils.lerp(gunContainer.rotation.x, reloadY, 0.2);
+            
+            const targetPos = isADS ? new THREE.Vector3(-0.2, 0.16, 0.1) : new THREE.Vector3(0, 0, 0);
+            gunContainer.position.lerp(targetPos.add(rP), 0.2);
+            gunContainer.rotation.x = THREE.MathUtils.lerp(gunContainer.rotation.x, rR.x, 0.2);
+            gunContainer.rotation.y = THREE.MathUtils.lerp(gunContainer.rotation.y, rR.y, 0.2);
+            gunContainer.rotation.z = THREE.MathUtils.lerp(gunContainer.rotation.z, rR.z, 0.2);
 
             if (isFiring) shoot();
 
@@ -257,16 +283,15 @@
                 vehicles.forEach((v, vIdx) => {
                     if (b.position.distanceTo(v.position) < (v.userData.type==='tank'?10:6)) {
                         v.userData.hp -= b.userData.damage; hit = true;
-                        if(v.userData.hp <= 0) { createExplosion(v.position, 0xffaa00, 5); scene.remove(v); vehicles.splice(vIdx, 1); score += 500; phaseKills++; updateUI(); }
+                        if(v.userData.hp <= 0) { createExplosion(v.position, 0xffaa00, 4); scene.remove(v); vehicles.splice(vIdx, 1); score += 500; phaseKills++; updateUI(); }
                     }
                 });
                 if(hit || b.position.y < 0 || b.position.length() > 600) {
-                    if(b.userData.isRocket) createExplosion(b.position, 0xff4400, 4);
+                    if(b.userData.isRocket) createExplosion(b.position, 0xff4400, 3);
                     scene.remove(b); bullets.splice(i, 1);
                 }
             }
 
-            // フェーズ管理 & 自動増援
             if(phase === 1) {
                 if(bots.length < 5 && phaseKills < 15) spawnBot();
                 if(phaseKills >= 15) { phase = 2; phaseKills = 0; showMessage("PHASE 2: SEA & AIR INVASION", 4000); spawnVehicle('boat'); spawnVehicle('heli'); updateUI(); }
@@ -288,7 +313,7 @@
 
             bots.forEach(bot => {
                 const dir = new THREE.Vector3().subVectors(camera.position, bot.position); dir.y = 0;
-                bot.position.add(dir.normalize().multiplyScalar(0.04));
+                bot.position.add(dir.normalize().multiplyScalar(0.045));
             });
 
             vehicles.forEach(v => {
@@ -306,7 +331,7 @@
             });
 
             for(let i=effects.length-1; i>=0; i--) {
-                effects[i].life -= 0.03;
+                effects[i].life -= 0.04;
                 effects[i].obj.scale.addScalar(effects[i].scale);
                 effects[i].obj.material.opacity = effects[i].life;
                 if(effects[i].life <= 0) { scene.remove(effects[i].obj); effects.splice(i, 1); }
