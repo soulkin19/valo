@@ -66,12 +66,13 @@
         const sight = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.05, 0.01), new THREE.MeshStandardMaterial({ color: 0xff0000 }));
         sight.position.set(0.2, -0.17, -0.6); gunContainer.add(sight);
 
+        // 反動(recoil)を大幅に強化
         const weapons = {
-            '1': { name: "ASh-12", ammo: 30, maxAmmo: 30, rpm: 500, speed: 4, damage: 34, recoil: { y: 0.12, x: 0.02, spreadX: 0.04, speed: 0.12 } },
-            '2': { name: "HK416", ammo: 45, maxAmmo: 45, rpm: 880, speed: 6, damage: 21, recoil: { y: 0.06, x: -0.01, spreadX: 0.02, speed: 0.2 } },
-            '3': { name: "AS VAL", ammo: 45, maxAmmo: 45, rpm: 972, speed: 4, damage: 21, recoil: { y: 0.05, x: 0.01, spreadX: 0.03, speed: 0.25 } },
-            '4': { name: "Type 95", ammo: 30, maxAmmo: 30, rpm: 650, speed: 5, damage: 25, recoil: { y: 0.07, x: 0.01, spreadX: 0.02, speed: 0.15 } },
-            '5': { name: "M249", ammo: 100, maxAmmo: 100, rpm: 800, speed: 5, damage: 20, recoil: { y: 0.08, x: 0.02, spreadX: 0.01, speed: 0.1 } }
+            '1': { name: "ASh-12", ammo: 30, maxAmmo: 30, rpm: 500, speed: 4, damage: 34, recoil: { y: 0.25, x: 0.04, spreadX: 0.08, speed: 0.1 } },
+            '2': { name: "HK416", ammo: 45, maxAmmo: 45, rpm: 880, speed: 6, damage: 21, recoil: { y: 0.12, x: -0.02, spreadX: 0.05, speed: 0.15 } },
+            '3': { name: "AS VAL", ammo: 45, maxAmmo: 45, rpm: 972, speed: 4, damage: 21, recoil: { y: 0.10, x: 0.02, spreadX: 0.07, speed: 0.2 } },
+            '4': { name: "Type 95", ammo: 30, maxAmmo: 30, rpm: 650, speed: 5, damage: 25, recoil: { y: 0.15, x: 0.02, spreadX: 0.04, speed: 0.12 } },
+            '5': { name: "M249", ammo: 100, maxAmmo: 100, rpm: 800, speed: 5, damage: 20, recoil: { y: 0.18, x: 0.04, spreadX: 0.03, speed: 0.08 } }
         };
 
         let currentWep = weapons['1'], lastFireTime = 0, isReloading = false, isFiring = false, score = 0, phase = 1;
@@ -85,7 +86,6 @@
             document.getElementById('max-ammo').innerText = currentWep.maxAmmo;
             document.getElementById('score').innerText = score;
             document.getElementById('phase').innerText = phase === 1 ? "1 (Infantry)" : "2 (Heavy Armor)";
-            document.getElementById('ads-status').innerText = isADS ? "ADS ON" : "Hip Fire";
             document.getElementById('crosshair').style.display = isADS ? 'none' : 'block';
         }
 
@@ -150,13 +150,11 @@
             if (now - lastFireTime < 60000/currentWep.rpm || currentWep.ammo <= 0 || isReloading) return;
             lastFireTime = now; currentWep.ammo--; updateUI();
             
-            // 物理反動
             gunContainer.position.z += isADS ? 0.05 : 0.1;
             let adsMult = isADS ? 0.6 : 1.0;
             currentRecoilY += currentWep.recoil.y * adsMult;
             currentRecoilX += (currentWep.recoil.x + (Math.random()-0.5)*2*currentWep.recoil.spreadX) * adsMult;
 
-            // 弾丸生成ロジック修正
             const b = new THREE.Mesh(new THREE.SphereGeometry(0.15, 8, 8), new THREE.MeshBasicMaterial({ color: 0xffffcc }));
             const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
             b.position.copy(camera.position).add(dir.clone().multiplyScalar(1.5));
@@ -169,7 +167,7 @@
             let color = type === 'boat' ? 0x00ffff : 0x555555;
             const v = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ color: color }));
             v.position.set(Math.random()*150-75, type === 'boat'?0.75:15, -120);
-            v.userData = { type: type, hp: 500, lastShoot: 0 }; scene.add(v); vehicles.push(v);
+            v.userData = { type: type, hp: 800, lastShoot: 0 }; scene.add(v); vehicles.push(v);
         }
 
         for(let i=0; i<8; i++) {
@@ -180,7 +178,14 @@
         function animate() {
             requestAnimationFrame(animate);
             const now = performance.now();
-            if (score >= 1000 && phase === 1) { phase = 2; spawnVehicle('boat'); spawnVehicle('heli'); updateUI(); }
+            if (score >= 1000 && phase === 1) { 
+                phase = 2; 
+                spawnVehicle('boat'); spawnVehicle('heli'); 
+                document.getElementById('msg').innerText = "PHASE 2: HEAVY ARMOR ENGAGED"; 
+                document.getElementById('msg').style.display = 'block';
+                setTimeout(()=>document.getElementById('msg').style.display='none', 3000);
+                updateUI(); 
+            }
 
             currentRecoilY *= (1 - currentWep.recoil.speed); currentRecoilX *= (1 - currentWep.recoil.speed);
             camera.quaternion.setFromEuler(new THREE.Euler(Math.max(-1.5, Math.min(1.5, lat + currentRecoilY)), lon + currentRecoilX, 0, 'YXZ'));
@@ -206,16 +211,34 @@
             vehicles.forEach(v => {
                 if(v.userData.type === 'boat') { v.position.x += Math.sin(now*0.001)*0.2; v.position.z += 0.2; if(v.position.z > 50) v.position.z = -150; }
                 else { v.position.x = Math.cos(now*0.0005)*100; v.position.z = Math.sin(now*0.0005)*100-50; }
-                if (now - v.userData.lastShoot > 2000) {
-                    v.userData.lastShoot = now; const eb = new THREE.Mesh(new THREE.SphereGeometry(0.5, 8, 8), new THREE.MeshBasicMaterial({ color: 0xff3300 }));
-                    eb.position.copy(v.position); const dir = new THREE.Vector3().subVectors(camera.position, v.position).normalize();
-                    eb.userData = { velocity: dir.multiplyScalar(1.2) }; scene.add(eb); enemyBullets.push(eb);
+                
+                // フェーズ2の攻撃強化: 連射速度向上
+                let fireRate = v.userData.type === 'boat' ? 1200 : 800;
+                if (now - v.userData.lastShoot > fireRate) {
+                    v.userData.lastShoot = now; 
+                    const eb = new THREE.Mesh(new THREE.SphereGeometry(0.8, 8, 8), new THREE.MeshBasicMaterial({ color: 0xffaa00 }));
+                    eb.position.copy(v.position); 
+                    const dir = new THREE.Vector3().subVectors(camera.position, v.position).normalize();
+                    // 榴弾・機関砲を模した高速弾
+                    eb.userData = { velocity: dir.multiplyScalar(1.8), type: 'he' }; 
+                    scene.add(eb); enemyBullets.push(eb);
                 }
             });
 
             for (let i = enemyBullets.length - 1; i >= 0; i--) {
                 const eb = enemyBullets[i]; eb.position.add(eb.userData.velocity);
-                if (eb.position.distanceTo(camera.position) < 2.5) { scene.remove(eb); enemyBullets.splice(i, 1); score = Math.max(0, score-50); document.getElementById('damage-flash').style.boxShadow = "inset 0 0 100px rgba(255,0,0,1)"; setTimeout(()=>document.getElementById('damage-flash').style.boxShadow="inset 0 0 100px rgba(255,0,0,0)", 100); updateUI(); }
+                
+                // 近接信管・榴弾演出（サイズを少しずつ大きく）
+                eb.scale.addScalar(0.01);
+
+                if (eb.position.distanceTo(camera.position) < 3.5) { 
+                    scene.remove(eb); 
+                    enemyBullets.splice(i, 1); 
+                    score = Math.max(0, score-150); 
+                    document.getElementById('damage-flash').style.boxShadow = "inset 0 0 150px rgba(255,100,0,1)"; 
+                    setTimeout(()=>document.getElementById('damage-flash').style.boxShadow="inset 0 0 100px rgba(255,0,0,0)", 150); 
+                    updateUI(); 
+                }
                 else if (eb.position.y < -1 || eb.position.length() > 600) { scene.remove(eb); enemyBullets.splice(i, 1); }
             }
 
