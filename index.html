@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Mobile FPS - Delta Style Reload</title>
+    <title>Mobile FPS - Tactical Operator</title>
     <style>
         :root { --ui-color: #000; --ui-bg: rgba(255,255,255,0.9); }
         * { touch-action: none; -webkit-tap-highlight-color: transparent; }
@@ -133,7 +133,7 @@
             let adsMult = isADS ? 0.4 : 1.0;
             currentRecoilY += currentWep.recoil.y * adsMult;
             currentRecoilX += (Math.random()-0.5) * currentWep.recoil.x;
-            camImpact = 0.02; // 発砲時の微振動
+            camImpact = 0.02;
             const bSize = currentWep.isRocket ? 0.25 : 0.1;
             const b = new THREE.Mesh(new THREE.SphereGeometry(bSize, 8, 8), new THREE.MeshBasicMaterial({ color: currentWep.isRocket?0xff6600:0xffffcc }));
             const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
@@ -217,7 +217,7 @@
             requestAnimationFrame(animate);
             const now = performance.now();
 
-            camImpact *= 0.85; // 衝撃の減衰
+            camImpact *= 0.85;
             let shakeX = (Math.random()-0.5) * camImpact;
             let shakeY = (Math.random()-0.5) * camImpact;
 
@@ -225,58 +225,45 @@
             camera.quaternion.setFromEuler(new THREE.Euler(lat + currentRecoilY + shakeY, lon + currentRecoilX + shakeX, 0, 'YXZ'));
             camera.fov = THREE.MathUtils.lerp(camera.fov, isADS ? 40 : 75, 0.2); camera.updateProjectionMatrix();
 
-            // Hawk Ops Style Tactical Reload
             let rP = new THREE.Vector3(0,0,0);
             let rR = new THREE.Euler(0,0,0);
             
+            // タルコフ風スプリント挙動 (移動中 & 非ADS & 非リロード中)
+            const isMoving = (moveTouchId !== null);
+            const sprintPose = isMoving && !isADS && !isReloading && !isFiring;
+
             if(isReloading) {
                 reloadProgress += 0.016;
                 const t = reloadProgress;
-                
-                if(t < 0.15) { // フェーズ1: 銃を引き寄せ、マガジンウェルを斜めに向ける (準備)
-                    const s = t / 0.15;
-                    rP.set(0.1 * s, -0.2 * s, 0.1 * s);
-                    rR.set(-0.3 * s, 0.2 * s, 0.5 * s);
-                } else if(t < 0.35) { // フェーズ2: マガジンを高速で引き抜く (鋭い動き)
-                    const s = (t - 0.15) / 0.2;
-                    const bump = Math.sin(s * Math.PI) * 0.05;
-                    rP.set(0.1, -0.2 - bump, 0.1);
-                    rR.set(-0.3, 0.2, 0.5 + bump);
-                } else if(t < 0.65) { // フェーズ3: 新しいマガジンを挿入位置へ (一瞬の溜め)
-                    rP.set(0.1, -0.2, 0.1);
-                    rR.set(-0.3, 0.2, 0.5);
-                } else if(t < 0.85) { // フェーズ4: マガジンを叩き込む & ボルト操作 (衝撃！)
-                    const s = (t - 0.65) / 0.2;
-                    if(s < 0.2) camImpact = 0.04; // 叩き込んだ瞬間に画面を揺らす
-                    rP.set(0.1, -0.2 + 0.3 * s, 0.1 - 0.1 * s);
-                    rR.set(-0.3 + 0.4 * s, 0.2 - 0.3 * s, 0.5 - 0.6 * s);
-                } else if(t < 1.0) { // フェーズ5: 構えの復元
-                    const s = (t - 0.85) / 0.15;
-                    rP.set(0.1 * (1-s), 0.1 * (1-s), 0);
-                    rR.set(0.1 * (1-s), -0.1 * (1-s), -0.1 * (1-s));
-                } else { 
-                    isReloading = false; currentWep.ammo = currentWep.maxAmmo; updateUI(); 
-                }
+                if(t < 0.15) { rP.set(0.1 * (t/0.15), -0.2 * (t/0.15), 0.1 * (t/0.15)); rR.set(-0.3 * (t/0.15), 0.2 * (t/0.15), 0.5 * (t/0.15)); }
+                else if(t < 0.35) { const s = (t - 0.15) / 0.2; rP.set(0.1, -0.2 - Math.sin(s * Math.PI) * 0.05, 0.1); rR.set(-0.3, 0.2, 0.5 + Math.sin(s * Math.PI) * 0.05); }
+                else if(t < 0.65) { rP.set(0.1, -0.2, 0.1); rR.set(-0.3, 0.2, 0.5); }
+                else if(t < 0.85) { const s = (t - 0.65) / 0.2; if(s < 0.2) camImpact = 0.04; rP.set(0.1, -0.2 + 0.3 * s, 0.1 - 0.1 * s); rR.set(-0.3 + 0.4 * s, 0.2 - 0.3 * s, 0.5 - 0.6 * s); }
+                else if(t < 1.0) { const s = (t - 0.85) / 0.15; rP.set(0.1 * (1-s), 0.1 * (1-s), 0); rR.set(0.1 * (1-s), -0.1 * (1-s), -0.1 * (1-s)); }
+                else { isReloading = false; currentWep.ammo = currentWep.maxAmmo; updateUI(); }
+            } else if(sprintPose) {
+                // タルコフ風：片手で斜め上に持つ
+                rP.set(0.25, -0.15, -0.1);
+                rR.set(-0.6, -0.3, 0.6);
             }
             
-            // 移動による銃の揺れ (リロード中は大きく)
-            const walkSpeed = (moveTouchId !== null) ? 1.0 : 0.1;
-            const reloadWeight = isReloading ? 1.5 : 1.0;
-            const swayX = Math.sin(now * 0.008) * 0.01 * walkSpeed * reloadWeight;
-            const swayY = Math.cos(now * 0.016) * 0.01 * walkSpeed * reloadWeight;
+            const walkSpeed = isMoving ? 1.0 : 0.1;
+            const swayX = Math.sin(now * 0.008) * 0.015 * walkSpeed;
+            const swayY = Math.cos(now * 0.016) * 0.015 * walkSpeed;
 
             const targetPos = isADS ? new THREE.Vector3(-0.2, 0.16, 0.1) : new THREE.Vector3(swayX, swayY, 0);
-            gunContainer.position.lerp(targetPos.add(rP), 0.2);
+            gunContainer.position.lerp(targetPos.clone().add(rP), 0.2);
             gunContainer.rotation.x = THREE.MathUtils.lerp(gunContainer.rotation.x, rR.x, 0.2);
             gunContainer.rotation.y = THREE.MathUtils.lerp(gunContainer.rotation.y, rR.y, 0.2);
             gunContainer.rotation.z = THREE.MathUtils.lerp(gunContainer.rotation.z, rR.z, 0.2);
 
             if (isFiring) shoot();
 
-            if (moveTouchId !== null) {
+            if (isMoving) {
                 const forward = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion); forward.y = 0; forward.normalize();
                 const right = new THREE.Vector3(1,0,0).applyQuaternion(camera.quaternion); right.y = 0; right.normalize();
-                const newPos = camera.position.clone().addScaledVector(forward, -moveZ*0.15).addScaledVector(right, moveX*0.15);
+                // 走る速度を0.22に向上
+                const newPos = camera.position.clone().addScaledVector(forward, -moveZ*0.22).addScaledVector(right, moveX*0.22);
                 let canMove = true;
                 obstacles.forEach(o => { if(newPos.distanceTo(new THREE.Vector3(o.pos.x, 1.6, o.pos.z)) < o.size + 1) canMove = false; });
                 if(canMove) camera.position.copy(newPos);
@@ -325,7 +312,19 @@
 
             bots.forEach(bot => {
                 const dir = new THREE.Vector3().subVectors(camera.position, bot.position); dir.y = 0;
-                bot.position.add(dir.normalize().multiplyScalar(0.045));
+                const nextStep = dir.normalize().multiplyScalar(0.045);
+                bot.position.add(nextStep);
+                
+                // 敵の壁埋まり防止ロジック
+                obstacles.forEach(o => {
+                    const dist = bot.position.distanceTo(new THREE.Vector3(o.pos.x, 0.8, o.pos.z));
+                    const minDist = o.size + 0.8; 
+                    if(dist < minDist) {
+                        const pushDir = new THREE.Vector3().subVectors(bot.position, o.pos).normalize();
+                        bot.position.x = o.pos.x + pushDir.x * minDist;
+                        bot.position.z = o.pos.z + pushDir.z * minDist;
+                    }
+                });
             });
 
             vehicles.forEach(v => {
