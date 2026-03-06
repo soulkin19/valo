@@ -3,79 +3,88 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Hybrid FPS - Real Spec & Anim</title>
+    <title>Mobile Final FPS</title>
     <style>
-        :root { --ui-color: #000; --ui-bg: rgba(255,255,255,0.8); }
-        body { margin: 0; overflow: hidden; background: #eee; touch-action: none; font-family: 'Courier New', monospace; -webkit-user-select: none; user-select: none; }
+        :root { --ui-color: #000; --ui-bg: rgba(255,255,255,0.9); }
+        body { margin: 0; overflow: hidden; background: #eee; touch-action: none; font-family: sans-serif; -webkit-user-select: none; user-select: none; }
         
-        /* クロスヘア */
         #crosshair {
             position: absolute; top: 50%; left: 50%;
-            width: 16px; height: 16px; border: 2px solid #333;
+            width: 20px; height: 20px; border: 2px solid #333;
             border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; z-index: 10;
         }
         
-        /* メインUI */
         #ui {
-            position: absolute; top: max(20px, env(safe-area-inset-top)); left: max(20px, env(safe-area-inset-left));
-            color: var(--ui-color); pointer-events: none;
-            background: var(--ui-bg); padding: 15px; border-radius: 8px; border: 2px solid #333; z-index: 11;
+            position: absolute; top: 20px; left: 20px;
+            color: var(--ui-color); background: var(--ui-bg); 
+            padding: 10px; border-radius: 8px; border: 2px solid #333; z-index: 11; font-size: 14px;
         }
         
-        /* メッセージエフェクト */
         #msg {
-            position: absolute; width: 100%; top: 40%; text-align: center;
-            color: #d00; font-size: 24px; pointer-events: none; font-weight: bold; text-shadow: 1px 1px 0 #fff;
-            display: none; z-index: 12;
+            position: absolute; width: 100%; top: 30%; text-align: center;
+            color: #f00; font-size: 24px; pointer-events: none; font-weight: bold; display: none; z-index: 12;
         }
-        
-        /* モバイル用武器切り替えUI */
+
+        /* 武器切り替えボタン（右側） */
         #weapon-selector {
-            position: absolute; bottom: max(20px, env(safe-area-inset-bottom)); right: max(20px, env(safe-area-inset-right));
-            background: var(--ui-bg); border: 2px solid #333; border-radius: 8px;
-            display: none; flex-direction: column; z-index: 20; overflow: hidden;
+            position: absolute; top: 20px; right: 20px;
+            display: flex; flex-direction: column; gap: 5px; z-index: 20;
         }
         #weapon-selector button {
-            background: none; border: none; padding: 10px 20px; color: var(--ui-color);
-            font-family: inherit; font-size: 14px; text-align: left; cursor: pointer;
+            background: var(--ui-bg); border: 2px solid #333; padding: 10px;
+            border-radius: 5px; font-weight: bold; font-size: 12px;
         }
-        #weapon-selector button.active { background: rgba(0,0,0,0.1); font-weight: bold; }
-        #weapon-selector button:not(:last-child) { border-bottom: 1px solid #999; }
+        #weapon-selector button.active { background: #333; color: #fff; }
 
-        /* タッチ操作を明示する初期画面 */
+        /* リロードボタン（右下） */
+        #reload-btn {
+            position: absolute; bottom: 40px; right: 40px;
+            width: 80px; height: 80px; border-radius: 50%;
+            background: rgba(255,0,0,0.6); color: white; border: 3px solid #fff;
+            font-weight: bold; display: flex; justify-content: center; align-items: center; z-index: 20;
+        }
+
+        /* 仮想ジョイスティック（左下） */
+        #joystick-base {
+            position: absolute; bottom: 50px; left: 50px;
+            width: 120px; height: 120px; background: rgba(0,0,0,0.2);
+            border-radius: 50%; display: none; z-index: 15;
+        }
+        #joystick-stick {
+            position: absolute; top: 35px; left: 35px;
+            width: 50px; height: 50px; background: rgba(255,255,255,0.5);
+            border-radius: 50%;
+        }
+
         #start-overlay {
-            position: absolute; width: 100%; height: 100%; background: rgba(0,0,0,0.5);
+            position: absolute; width: 100%; height: 100%; background: rgba(0,0,0,0.9);
             display: flex; justify-content: center; align-items: center; color: #fff;
-            font-size: 20px; text-align: center; z-index: 100; cursor: pointer;
-        }
-
-        /* PC/iPadKeyboard用の表示調整 */
-        @media (pointer: fine) {
-            #weapon-selector { display: none !important; } /* キーボードがある場合は非表示 */
-        }
-        @media (pointer: coarse) {
-            #weapon-selector { display: flex; } /* タッチデバイスのみ表示 */
+            font-size: 24px; z-index: 100;
         }
     </style>
 </head>
 <body>
-    <div id="start-overlay">TAP SCREEN TO START<br><small>[WASD]: Move | [SPACE/Tap]: Fire | [R]: Reload | [1-5]: Weapon</small></div>
+    <div id="start-overlay">TOUCH TO START</div>
     <div id="msg"></div>
     <div id="crosshair"></div>
+    
     <div id="ui">
         SCORE: <span id="score">0</span><br>
         WEAPON: <span id="weapon-name">ASh-12</span><br>
-        AMMO: <span id="ammo">30</span> / <span id="max-ammo">30</span><br>
-        <small>RPM: <span id="rpm">500</span> | VEL: <span id="vel">400</span></small>
+        AMMO: <span id="ammo">30</span> / <span id="max-ammo">30</span>
     </div>
 
     <div id="weapon-selector">
-        <button data-wep="1" class="active">1 ASh-12</button>
-        <button data-wep="2">2 HK416</button>
-        <button data-wep="3">3 AS VAL</button>
-        <button data-wep="4">4 Type 95</button>
-        <button data-wep="5">5 M249</button>
+        <button onclick="switchWeapon('1')" id="btn-1" class="active">ASh-12</button>
+        <button onclick="switchWeapon('2')" id="btn-2">HK416</button>
+        <button onclick="switchWeapon('3')" id="btn-3">AS VAL</button>
+        <button onclick="switchWeapon('4')" id="btn-4">Type 95</button>
+        <button onclick="switchWeapon('5')" id="btn-5">M249</button>
     </div>
+
+    <div id="reload-btn" onclick="reload()">RELOAD</div>
+
+    <div id="joystick-base"><div id="joystick-stick"></div></div>
 
     <script type="importmap">
         { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
@@ -84,17 +93,14 @@
     <script type="module">
         import * as THREE from 'three';
 
-        // --- Basic Setup ---
+        // --- シーン基本設定 ---
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x87ceeb);
-        scene.fog = new THREE.Fog(0x87ceeb, 20, 100);
-
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.01, 1000); // Nearを小さく
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.01, 1000);
         camera.position.set(0, 1.6, 5);
 
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(window.devicePixelRatio);
         document.body.appendChild(renderer.domElement);
 
         scene.add(new THREE.AmbientLight(0xffffff, 0.8));
@@ -107,233 +113,136 @@
         scene.add(floor);
         scene.add(new THREE.GridHelper(200, 40, 0x000000, 0x888888));
 
-        // --- Weapon Model Setup ---
-        const gunContainer = new THREE.Group(); // アニメーション用コンテナ
+        // 銃コンテナ
+        const gunContainer = new THREE.Group();
         camera.add(gunContainer);
-        scene.add(camera); // カメラをシーンに追加
+        scene.add(camera);
 
-        // 簡易的な銃のモデル (Procedural)
-        function createGunModel() {
-            const group = new THREE.Group();
-            
-            // レシーバー
-            const body = new THREE.Mesh(
-                new THREE.BoxGeometry(0.08, 0.12, 0.4),
-                new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.8, roughness: 0.5 })
-            );
-            body.position.set(0.15, -0.2, -0.3); // 右下に配置
-            group.add(body);
+        const body = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.15, 0.5), new THREE.MeshStandardMaterial({ color: 0x222222 }));
+        body.position.set(0.2, -0.25, -0.4);
+        gunContainer.add(body);
 
-            // バレル
-            const barrel = new THREE.Mesh(
-                new THREE.CylinderGeometry(0.02, 0.02, 0.3),
-                new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.9 })
-            );
-            barrel.rotation.x = -Math.PI / 2;
-            barrel.position.set(0.15, -0.16, -0.6);
-            group.add(barrel);
-
-            // マガジン（武器ごとにスケール変える用）
-            const mag = new THREE.Mesh(
-                new THREE.BoxGeometry(0.06, 0.2, 0.1),
-                new THREE.MeshStandardMaterial({ color: 0x333333 })
-            );
-            mag.position.set(0.15, -0.35, -0.35);
-            mag.name = "magazine";
-            group.add(mag);
-
-            // サイト
-            const sight = new THREE.Mesh(
-                new THREE.BoxGeometry(0.02, 0.04, 0.02),
-                new THREE.MeshStandardMaterial({ color: 0x111111 })
-            );
-            sight.position.set(0.15, -0.13, -0.45);
-            group.add(sight);
-
-            return group;
-        }
-        const gunModel = createGunModel();
-        gunContainer.add(gunModel);
-
-        // --- Weapon Specs ---
+        // --- 武器スペック ---
         const weapons = {
-            '1': { name: "ASh-12", ammo: 30, maxAmmo: 30, rpm: 500, speed: 400, damage: 34, color: 0x555555, magScale: 1.0 },
-            '2': { name: "HK416", ammo: 45, maxAmmo: 45, rpm: 880, speed: 600, damage: 21, color: 0x334433, magScale: 1.2 },
-            '3': { name: "AS VAL", ammo: 45, maxAmmo: 45, rpm: 972, speed: 400, damage: 21, color: 0x111111, magScale: 1.2 },
-            '4': { name: "Type 95", ammo: 30, maxAmmo: 30, rpm: 650, speed: 550, damage: 25, color: 0x223322, magScale: 1.0 },
-            '5': { name: "M249", ammo: 100, maxAmmo: 100, rpm: 800, speed: 500, damage: 20, color: 0x444400, magScale: 1.8 }
+            '1': { name: "ASh-12", ammo: 30, maxAmmo: 30, rpm: 500, speed: 400, damage: 34 },
+            '2': { name: "HK416", ammo: 45, maxAmmo: 45, rpm: 880, speed: 600, damage: 21 },
+            '3': { name: "AS VAL", ammo: 45, maxAmmo: 45, rpm: 972, speed: 400, damage: 21 },
+            '4': { name: "Type 95", ammo: 30, maxAmmo: 30, rpm: 650, speed: 550, damage: 25 },
+            '5': { name: "M249", ammo: 100, maxAmmo: 100, rpm: 800, speed: 500, damage: 20 }
         };
         let currentWep = weapons['1'];
         let lastFireTime = 0;
         let isReloading = false;
-        let isMobile = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
-
-        // UI & State
         let score = 0;
-        const keys = {};
         const bullets = [];
         const bots = [];
 
-        // --- Initialization & Input ---
-        const startOverlay = document.getElementById('start-overlay');
-        function start() {
-            startOverlay.style.display = 'none';
-            renderer.domElement.requestPointerLock?.(); // PCならロック試行
-            updateUI();
-        }
-        startOverlay.addEventListener('click', start);
-        startOverlay.addEventListener('touchstart', start);
-
-        // Keyboard (iPad/PC)
-        window.addEventListener('keydown', (e) => {
-            keys[e.code] = true;
-            if (weapons[e.key]) switchWeapon(e.key);
-            if (e.code === 'KeyR') reload();
-        });
-        window.addEventListener('keyup', (e) => keys[e.code] = false);
-
-        // Mobile Weapon Selector
-        document.querySelectorAll('#weapon-selector button').forEach(btn => {
-            btn.addEventListener('touchstart', (e) => {
-                e.stopPropagation(); // 射撃イベント発生を防ぐ
-                switchWeapon(btn.dataset.wep);
-            });
-        });
-
-        // Mouse/Touch View Control
-        let lon = 0, lat = 0;
-        let isTouching = false;
-        let prevTouchX = 0, prevTouchY = 0;
-
-        window.addEventListener('mousemove', (e) => {
-            if (startOverlay.style.display !== 'none') return;
-            let mx = e.movementX || 0;
-            let my = e.movementY || 0;
-            // iPadのmousemove相対値バグ対策
-            if (Math.abs(mx) > 300 || Math.abs(my) > 300) return; 
-            
-            lon -= mx * 0.004;
-            lat -= my * 0.004;
-            lat = Math.max(-Math.PI/2, Math.min(Math.PI/2, lat));
-        });
-
-        // Mobile Touch View & Fire
-        window.addEventListener('touchstart', (e) => {
-            if (startOverlay.style.display !== 'none') return;
-            isTouching = true;
-            prevTouchX = e.touches[0].clientX;
-            prevTouchY = e.touches[0].clientY;
-            
-            // 右側タップ（武器UI以外）なら射撃開始
-            if (prevTouchX > window.innerWidth * 0.3) keys['Space'] = true; 
-        });
-
-        window.addEventListener('touchmove', (e) => {
-            if (!isTouching || startOverlay.style.display !== 'none') return;
-            const touch = e.touches[0];
-            const mx = touch.clientX - prevTouchX;
-            const my = touch.clientY - prevTouchY;
-            
-            lon -= mx * 0.006; // タッチ用感度
-            lat -= my * 0.006;
-            lat = Math.max(-Math.PI/2, Math.min(Math.PI/2, lat));
-            
-            prevTouchX = touch.clientX;
-            prevTouchY = touch.clientY;
-        });
-
-        window.addEventListener('touchend', () => {
-            isTouching = false;
-            keys['Space'] = false; // 射撃停止
-        });
-
-        // PC Mouse Fire
-        window.addEventListener('mousedown', () => { if(startOverlay.style.display === 'none') keys['Space'] = true; });
-        window.addEventListener('mouseup', () => { keys['Space'] = false; });
-
-        // --- Core Functions ---
-        function switchWeapon(id) {
-            if (isReloading || currentWep === weapons[id]) return;
+        window.switchWeapon = (id) => {
             currentWep = weapons[id];
-            
-            // マガジンモデルのスケール変更
-            const mag = gunModel.getObjectByName("magazine");
-            if(mag) mag.scale.y = currentWep.magScale;
-
-            // UI更新
             document.querySelectorAll('#weapon-selector button').forEach(b => b.classList.remove('active'));
-            document.querySelector(`#weapon-selector button[data-wep="${id}"]`)?.classList.add('active');
-            
-            // 切り替えアニメーション（銃を下げる）
-            gunContainer.position.y = -0.5;
-
+            document.getElementById('btn-'+id).classList.add('active');
             updateUI();
-        }
+        };
 
-        function updateUI() {
-            document.getElementById('weapon-name').innerText = currentWep.name;
-            document.getElementById('ammo').innerText = currentWep.ammo;
-            document.getElementById('max-ammo').innerText = currentWep.maxAmmo;
-            document.getElementById('rpm').innerText = currentWep.rpm;
-            document.getElementById('vel').innerText = currentWep.speed;
-            document.getElementById('score').innerText = score;
-        }
-
-        function reload() {
+        window.reload = () => {
             if (isReloading || currentWep.ammo === currentWep.maxAmmo) return;
             isReloading = true;
-            
-            const msgEl = document.getElementById('msg');
-            msgEl.innerText = "RELOADING...";
-            msgEl.style.display = 'block';
-
-            // リロードアニメーション（銃を横に振る）
-            gunContainer.rotation.z = Math.PI / 4;
-            gunContainer.position.x = -0.1;
-
+            document.getElementById('msg').innerText = "RELOADING...";
+            document.getElementById('msg').style.display = 'block';
+            gunContainer.rotation.z = 0.5;
             setTimeout(() => {
                 currentWep.ammo = currentWep.maxAmmo;
                 isReloading = false;
                 updateUI();
-                msgEl.style.display = 'none';
-                
-                // アニメーション戻す
+                document.getElementById('msg').style.display = 'none';
                 gunContainer.rotation.z = 0;
-                gunContainer.position.x = 0;
-            }, 1500);
-        }
+            }, 1200);
+        };
+
+        // --- モバイル操作ロジック ---
+        let lon = 0, lat = 0;
+        let moveX = 0, moveZ = 0; // ジョイスティックによる移動量
+        const joystickBase = document.getElementById('joystick-base');
+        const joystickStick = document.getElementById('joystick-stick');
+
+        let lookTouchId = null;
+        let moveTouchId = null;
+        let touchStartX = 0, touchStartY = 0;
+        let lookPrevX = 0, lookPrevY = 0;
+
+        window.addEventListener('touchstart', (e) => {
+            document.getElementById('start-overlay').style.display = 'none';
+            for (let t of e.changedTouches) {
+                if (t.clientX < window.innerWidth / 2) { // 左半分：移動
+                    moveTouchId = t.identifier;
+                    joystickBase.style.display = 'block';
+                    joystickBase.style.left = (t.clientX - 60) + 'px';
+                    joystickBase.style.bottom = (window.innerHeight - t.clientY - 60) + 'px';
+                    touchStartX = t.clientX;
+                    touchStartY = t.clientY;
+                } else { // 右半分：視点・射撃
+                    lookTouchId = t.identifier;
+                    lookPrevX = t.clientX;
+                    lookPrevY = t.clientY;
+                    // 短いタップ判定用に開始時間を保持しても良いが、ここではシンプルに
+                    setTimeout(() => { if (lookTouchId === t.identifier) isMovingView = true; }, 100);
+                    var isMovingView = false;
+                }
+            }
+        });
+
+        window.addEventListener('touchmove', (e) => {
+            for (let t of e.changedTouches) {
+                if (t.identifier === moveTouchId) {
+                    let dx = t.clientX - touchStartX;
+                    let dy = t.clientY - touchStartY;
+                    const dist = Math.min(Math.sqrt(dx*dx + dy*dy), 50);
+                    const angle = Math.atan2(dy, dx);
+                    
+                    joystickStick.style.transform = `translate(${Math.cos(angle)*dist}px, ${Math.sin(angle)*dist}px)`;
+                    
+                    // 移動ベクトルを算出
+                    moveX = Math.cos(angle) * (dist / 50);
+                    moveZ = Math.sin(angle) * (dist / 50);
+                }
+                if (t.identifier === lookTouchId) {
+                    const dx = t.clientX - lookPrevX;
+                    const dy = t.clientY - lookPrevY;
+                    lon -= dx * 0.005;
+                    lat -= dy * 0.005;
+                    lat = Math.max(-1.5, Math.min(1.5, lat));
+                    lookPrevX = t.clientX;
+                    lookPrevY = t.clientY;
+                }
+            }
+        });
+
+        window.addEventListener('touchend', (e) => {
+            for (let t of e.changedTouches) {
+                if (t.identifier === moveTouchId) {
+                    moveTouchId = null;
+                    moveX = 0; moveZ = 0;
+                    joystickBase.style.display = 'none';
+                    joystickStick.style.transform = 'translate(0,0)';
+                }
+                if (t.identifier === lookTouchId) {
+                    // 右側をタップ（スワイプ量小）なら射撃
+                    const dist = Math.sqrt(Math.pow(t.clientX - lookPrevX, 2));
+                    if (dist < 10) shoot();
+                    lookTouchId = null;
+                }
+            }
+        });
 
         function shoot() {
             const now = performance.now();
-            const fireInterval = 60000 / currentWep.rpm;
-
-            if (now - lastFireTime < fireInterval) return;
-            if (currentWep.ammo <= 0 || isReloading) {
-                if(currentWep.ammo <= 0 && !isReloading && keys['Space']) {
-                     const msgEl = document.getElementById('msg');
-                     msgEl.innerText = "OUT OF AMMO! [R]";
-                     msgEl.style.display = 'block';
-                     setTimeout(()=>msgEl.style.display='none', 500);
-                     keys['Space'] = false; // 連射止める
-                }
-                return;
-            }
-
+            if (now - lastFireTime < 60000/currentWep.rpm || currentWep.ammo <= 0 || isReloading) return;
             lastFireTime = now;
             currentWep.ammo--;
             updateUI();
-
-            // 射撃アニメーション（反動）
-            gunContainer.position.z = 0.05; // 後退
-            gunContainer.rotation.x = 0.1;  // 跳ね上がり
-
-            const b = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 6), new THREE.MeshBasicMaterial({ color: currentWep.color }));
+            gunContainer.position.z = 0.05;
+            const b = new THREE.Mesh(new THREE.SphereGeometry(0.07, 4, 4), new THREE.MeshBasicMaterial({ color: 0xff0000 }));
             b.position.copy(camera.position);
-            
-            // 銃口位置から発射するように微調整
-            const gunTipOffset = new THREE.Vector3(0.15, -0.16, -0.8).applyQuaternion(camera.quaternion);
-            b.position.add(gunTipOffset);
-
             const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
             b.velocity = dir.multiplyScalar(currentWep.speed / 400);
             b.damage = currentWep.damage;
@@ -341,83 +250,61 @@
             bullets.push(b);
         }
 
-        // --- Bots ---
-        function createBot() {
+        function updateUI() {
+            document.getElementById('weapon-name').innerText = currentWep.name;
+            document.getElementById('ammo').innerText = currentWep.ammo;
+            document.getElementById('max-ammo').innerText = currentWep.maxAmmo;
+            document.getElementById('score').innerText = score;
+        }
+
+        for(let i=0; i<6; i++) {
             const bot = new THREE.Mesh(new THREE.BoxGeometry(1, 2, 1), new THREE.MeshStandardMaterial({ color: 0xcc0000 }));
             bot.position.set(Math.random()*40-20, 1, -Math.random()*30-5);
             bot.hp = 100;
             scene.add(bot);
             bots.push(bot);
         }
-        for(let i=0; i<6; i++) createBot();
 
-        // --- Game Loop ---
-        const clock = new THREE.Clock();
         function animate() {
             requestAnimationFrame(animate);
-            const delta = clock.getDelta();
-
-            // 視点更新
             camera.quaternion.setFromEuler(new THREE.Euler(lat, lon, 0, 'YXZ'));
+            gunContainer.position.z = THREE.MathUtils.lerp(gunContainer.position.z, 0, 0.1);
 
-            // 銃のアニメーションのスムーズな復元（Lerp）
-            gunContainer.position.z = THREE.MathUtils.lerp(gunContainer.position.z, 0, 0.2);
-            gunContainer.position.y = THREE.MathUtils.lerp(gunContainer.position.y, 0, 0.1);
-            gunContainer.rotation.x = THREE.MathUtils.lerp(gunContainer.rotation.x, 0, 0.2);
+            // ジョイスティック移動
+            if (moveTouchId !== null) {
+                const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+                forward.y = 0; forward.normalize();
+                const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+                right.y = 0; right.normalize();
 
-            if (keys['Space']) shoot();
-
-            // WASD Move
-            const moveSpeed = 7 * delta;
-            const dir = new THREE.Vector3();
-            if (keys['KeyW']) dir.z -= moveSpeed;
-            if (keys['KeyS']) dir.z += moveSpeed;
-            if (keys['KeyA']) dir.x -= moveSpeed;
-            if (keys['KeyD']) dir.x += moveSpeed;
-            camera.translateOnAxis(dir.normalize(), dir.length());
+                camera.position.addScaledVector(forward, -moveZ * 0.15);
+                camera.position.addScaledVector(right, moveX * 0.15);
+            }
             camera.position.y = 1.6;
 
-            // Bullets
+            // 弾丸更新
             for (let i = bullets.length - 1; i >= 0; i--) {
-                const b = bullets[i];
-                b.position.add(b.velocity);
+                const b = bullets[i]; b.position.add(b.velocity);
                 bots.forEach(bot => {
                     if (b.position.distanceTo(bot.position) < 1.2) {
-                        bot.hp -= b.damage;
-                        scene.remove(b);
-                        bullets.splice(i, 1);
-                        
+                        bot.hp -= b.damage; scene.remove(b); bullets.splice(i, 1);
                         if (bot.hp <= 0) {
-                            bot.position.set(Math.random()*40-20, 1, -Math.random()*40);
-                            bot.hp = 100;
-                            score += 100;
-                            updateUI();
+                            bot.position.set(Math.random()*40-20, 1, -Math.random()*40); bot.hp = 100;
+                            score += 100; updateUI();
                         }
                     }
                 });
-                if(b.position.distanceTo(camera.position) > 100) {
-                    scene.remove(b);
-                    bullets.splice(i, 1);
-                }
+                if(b.position.distanceTo(camera.position) > 80) { scene.remove(b); bullets.splice(i, 1); }
             }
 
-            // Bots AI
-            const botSpeed = 2.5 * delta;
             bots.forEach(bot => {
                 const moveDir = new THREE.Vector3().subVectors(camera.position, bot.position);
-                moveDir.y = 0;
-                if(moveDir.length() > 0.1) bot.position.add(moveDir.normalize().multiplyScalar(botSpeed));
+                moveDir.y = 0; bot.position.add(moveDir.normalize().multiplyScalar(0.04));
             });
 
             renderer.render(scene, camera);
         }
         animate();
-
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        });
     </script>
 </body>
 </html>
