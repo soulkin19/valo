@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Mobile FPS - Fixed Shooting</title>
+    <title>Mobile FPS - Recoil Fixed</title>
     <style>
         :root { --ui-color: #000; --ui-bg: rgba(255,255,255,0.9); }
         * { touch-action: none; -webkit-tap-highlight-color: transparent; }
@@ -50,16 +50,6 @@
         #ads-btn { background: rgba(0, 128, 0, 0.6); width: 75px; height: 75px; font-size: 14px; }
         #ads-btn.active { background: rgba(0, 128, 0, 1); border-color: #0f0; }
         #reload-btn { background: rgba(0, 0, 255, 0.6); width: 70px; height: 70px; font-size: 12px; }
-
-        #joystick-base {
-            position: absolute; bottom: 50px; left: 50px;
-            width: 120px; height: 120px; background: rgba(0,0,0,0.2);
-            border-radius: 50%; display: none; z-index: 15;
-        }
-        #joystick-stick {
-            position: absolute; top: 35px; left: 35px;
-            width: 50px; height: 50px; background: rgba(255,255,255,0.5); border-radius: 50%;
-        }
 
         #damage-flash {
             position: absolute; width: 100%; height: 100%; pointer-events: none;
@@ -140,11 +130,11 @@
         gunContainer.add(sight);
 
         const weapons = {
-            '1': { name: "ASh-12", ammo: 30, maxAmmo: 30, rpm: 500, speed: 800, damage: 34, recoil: { y: 0.08, x: 0.02, spreadX: 0.04, speed: 0.12 } },
-            '2': { name: "HK416", ammo: 45, maxAmmo: 45, rpm: 880, speed: 1200, damage: 21, recoil: { y: 0.04, x: -0.01, spreadX: 0.02, speed: 0.2 } },
-            '3': { name: "AS VAL", ammo: 45, maxAmmo: 45, rpm: 972, speed: 800, damage: 21, recoil: { y: 0.03, x: 0.01, spreadX: 0.03, speed: 0.25 } },
-            '4': { name: "Type 95", ammo: 30, maxAmmo: 30, rpm: 650, speed: 1100, damage: 25, recoil: { y: 0.05, x: 0.01, spreadX: 0.02, speed: 0.15 } },
-            '5': { name: "M249", ammo: 100, maxAmmo: 100, rpm: 800, speed: 1000, damage: 20, recoil: { y: 0.06, x: 0.02, spreadX: 0.01, speed: 0.1 } }
+            '1': { name: "ASh-12", ammo: 30, maxAmmo: 30, rpm: 500, speed: 800, damage: 34, recoil: { y: 0.1, x: 0.02, spreadX: 0.04, speed: 0.12 } },
+            '2': { name: "HK416", ammo: 45, maxAmmo: 45, rpm: 880, speed: 1200, damage: 21, recoil: { y: 0.05, x: -0.01, spreadX: 0.02, speed: 0.2 } },
+            '3': { name: "AS VAL", ammo: 45, maxAmmo: 45, rpm: 972, speed: 800, damage: 21, recoil: { y: 0.04, x: 0.01, spreadX: 0.03, speed: 0.25 } },
+            '4': { name: "Type 95", ammo: 30, maxAmmo: 30, rpm: 650, speed: 1100, damage: 25, recoil: { y: 0.06, x: 0.01, spreadX: 0.02, speed: 0.15 } },
+            '5': { name: "M249", ammo: 100, maxAmmo: 100, rpm: 800, speed: 1000, damage: 20, recoil: { y: 0.07, x: 0.02, spreadX: 0.01, speed: 0.1 } }
         };
 
         let currentWep = weapons['1'];
@@ -172,7 +162,7 @@
         }
 
         ['1','2','3','4','5'].forEach(id => {
-            document.getElementById('btn-'+id).addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); switchWeapon(id); });
+            document.getElementById('btn-'+id).addEventListener('touchstart', (e) => { e.preventDefault(); switchWeapon(id); });
         });
         function switchWeapon(id) {
             if (isReloading) return;
@@ -183,7 +173,7 @@
         }
 
         document.getElementById('reload-btn').addEventListener('touchstart', (e) => { 
-            e.preventDefault(); e.stopPropagation(); 
+            e.preventDefault(); 
             if (isReloading || currentWep.ammo === currentWep.maxAmmo) return;
             isReloading = true; isADS = false;
             document.getElementById('ads-btn').classList.remove('active');
@@ -239,7 +229,8 @@
                 }
                 if (t.identifier === lookTouchId) {
                     let sens = isADS ? 0.002 : 0.004;
-                    lon -= (t.clientX - lookPrevX) * sens; lat -= (t.clientY - lookPrevY) * sens;
+                    lon -= (t.clientX - lookPrevX) * sens; 
+                    lat -= (t.clientY - lookPrevY) * sens;
                     lat = Math.max(-1.4, Math.min(1.4, lat));
                     lookPrevX = t.clientX; lookPrevY = t.clientY;
                 }
@@ -276,14 +267,17 @@
             if (now - lastFireTime < 60000/currentWep.rpm || currentWep.ammo <= 0 || isReloading) return;
             lastFireTime = now; currentWep.ammo--; updateUI();
             
-            gunContainer.position.z += isADS ? 0.03 : 0.05;
+            // 視覚的キックバック（銃身を下げる）
+            gunContainer.position.z += isADS ? 0.04 : 0.08;
+            
             const r = currentWep.recoil;
-            let adsMult = isADS ? 0.5 : 1.0;
+            let adsMult = isADS ? 0.6 : 1.0;
+            
+            // 反動角度の蓄積
             currentRecoilY += r.y * adsMult;
             currentRecoilX += (r.x + (Math.random() - 0.5) * 2 * r.spreadX) * adsMult;
 
             const b = new THREE.Mesh(new THREE.SphereGeometry(0.12, 6, 6), new THREE.MeshBasicMaterial({ color: 0xffdd00 }));
-            // 生成位置をカメラから少し前にずらして銃口から出ているように見せる
             const shootDir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
             b.position.copy(camera.position).add(shootDir.clone().multiplyScalar(1.2)); 
             b.velocity = shootDir.multiplyScalar(currentWep.speed / 200);
@@ -303,11 +297,19 @@
                 spawnVehicle('boat'); spawnVehicle('heli');
             }
 
+            // 反動の適用と減衰
             currentRecoilY *= (1 - currentWep.recoil.speed);
             currentRecoilX *= (1 - currentWep.recoil.speed);
-            camera.quaternion.setFromEuler(new THREE.Euler(Math.max(-1.5, Math.min(1.5, lat + currentRecoilY)), lon + currentRecoilX, 0, 'YXZ'));
             
-            gunContainer.position.lerp(isADS ? adsPos : hipPos, 0.15);
+            // カメラの向きを決定（現在のlat/lonに反動を足す）
+            camera.quaternion.setFromEuler(new THREE.Euler(
+                Math.max(-1.5, Math.min(1.5, lat + currentRecoilY)), 
+                lon + currentRecoilX, 
+                0, 'YXZ'
+            ));
+            
+            // 銃身の位置復帰
+            gunContainer.position.lerp(isADS ? adsPos : hipPos, 0.2);
             camera.fov = THREE.MathUtils.lerp(camera.fov, isADS ? 50 : 75, 0.15);
             camera.updateProjectionMatrix();
 
