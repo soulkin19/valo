@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Mobile FPS - Phase 2: Combined Arms</title>
+    <title>Mobile FPS - Fixed Shooting</title>
     <style>
         :root { --ui-color: #000; --ui-bg: rgba(255,255,255,0.9); }
         * { touch-action: none; -webkit-tap-highlight-color: transparent; }
@@ -139,13 +139,12 @@
         sight.position.set(0.2, -0.17, -0.6);
         gunContainer.add(sight);
 
-        // --- 反動を少し強化 ---
         const weapons = {
-            '1': { name: "ASh-12", ammo: 30, maxAmmo: 30, rpm: 500, speed: 400, damage: 34, recoil: { y: 0.08, x: 0.02, spreadX: 0.04, speed: 0.12 } },
-            '2': { name: "HK416", ammo: 45, maxAmmo: 45, rpm: 880, speed: 600, damage: 21, recoil: { y: 0.04, x: -0.01, spreadX: 0.02, speed: 0.2 } },
-            '3': { name: "AS VAL", ammo: 45, maxAmmo: 45, rpm: 972, speed: 400, damage: 21, recoil: { y: 0.03, x: 0.01, spreadX: 0.03, speed: 0.25 } },
-            '4': { name: "Type 95", ammo: 30, maxAmmo: 30, rpm: 650, speed: 550, damage: 25, recoil: { y: 0.05, x: 0.01, spreadX: 0.02, speed: 0.15 } },
-            '5': { name: "M249", ammo: 100, maxAmmo: 100, rpm: 800, speed: 500, damage: 20, recoil: { y: 0.06, x: 0.02, spreadX: 0.01, speed: 0.1 } }
+            '1': { name: "ASh-12", ammo: 30, maxAmmo: 30, rpm: 500, speed: 800, damage: 34, recoil: { y: 0.08, x: 0.02, spreadX: 0.04, speed: 0.12 } },
+            '2': { name: "HK416", ammo: 45, maxAmmo: 45, rpm: 880, speed: 1200, damage: 21, recoil: { y: 0.04, x: -0.01, spreadX: 0.02, speed: 0.2 } },
+            '3': { name: "AS VAL", ammo: 45, maxAmmo: 45, rpm: 972, speed: 800, damage: 21, recoil: { y: 0.03, x: 0.01, spreadX: 0.03, speed: 0.25 } },
+            '4': { name: "Type 95", ammo: 30, maxAmmo: 30, rpm: 650, speed: 1100, damage: 25, recoil: { y: 0.05, x: 0.01, spreadX: 0.02, speed: 0.15 } },
+            '5': { name: "M249", ammo: 100, maxAmmo: 100, rpm: 800, speed: 1000, damage: 20, recoil: { y: 0.06, x: 0.02, spreadX: 0.01, speed: 0.1 } }
         };
 
         let currentWep = weapons['1'];
@@ -155,7 +154,6 @@
         const hipPos = new THREE.Vector3(0, 0, 0), adsPos = new THREE.Vector3(-0.2, 0.17, 0.1); 
         let lon = 0, lat = 0, moveX = 0, moveZ = 0, currentRecoilY = 0, currentRecoilX = 0;
 
-        // UI 関連
         function updateUI() {
             document.getElementById('weapon-name').innerText = currentWep.name;
             document.getElementById('ammo').innerText = currentWep.ammo;
@@ -173,7 +171,6 @@
             updateUI();
         }
 
-        // 武器切り替え
         ['1','2','3','4','5'].forEach(id => {
             document.getElementById('btn-'+id).addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); switchWeapon(id); });
         });
@@ -185,7 +182,6 @@
             updateUI();
         }
 
-        // リロード
         document.getElementById('reload-btn').addEventListener('touchstart', (e) => { 
             e.preventDefault(); e.stopPropagation(); 
             if (isReloading || currentWep.ammo === currentWep.maxAmmo) return;
@@ -202,7 +198,6 @@
             }, 1200);
         });
 
-        // 射撃・ADS
         document.getElementById('fire-btn').addEventListener('touchstart', (e) => { e.preventDefault(); isFiring = true; });
         document.getElementById('fire-btn').addEventListener('touchend', (e) => { e.preventDefault(); isFiring = false; });
         document.getElementById('ads-btn').addEventListener('touchstart', (e) => { 
@@ -212,7 +207,6 @@
             updateUI();
         });
 
-        // モバイル操作
         const joystickBase = document.getElementById('joystick-base'), joystickStick = document.getElementById('joystick-stick');
         let moveTouchId = null, lookTouchId = null, touchStartX = 0, touchStartY = 0, lookPrevX = 0, lookPrevY = 0;
 
@@ -259,7 +253,6 @@
             }
         });
 
-        // オブジェクト生成関数
         function spawnBot() {
             const bot = new THREE.Mesh(new THREE.BoxGeometry(1, 2, 1), new THREE.MeshStandardMaterial({ color: 0xcc0000 }));
             bot.position.set(Math.random()*100-50, 1, -Math.random()*100-20);
@@ -289,10 +282,11 @@
             currentRecoilY += r.y * adsMult;
             currentRecoilX += (r.x + (Math.random() - 0.5) * 2 * r.spreadX) * adsMult;
 
-            const b = new THREE.Mesh(new THREE.SphereGeometry(0.1, 4, 4), new THREE.MeshBasicMaterial({ color: 0xff0000 }));
-            b.position.copy(camera.position);
-            const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
-            b.velocity = dir.multiplyScalar(currentWep.speed / 400);
+            const b = new THREE.Mesh(new THREE.SphereGeometry(0.12, 6, 6), new THREE.MeshBasicMaterial({ color: 0xffdd00 }));
+            // 生成位置をカメラから少し前にずらして銃口から出ているように見せる
+            const shootDir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+            b.position.copy(camera.position).add(shootDir.clone().multiplyScalar(1.2)); 
+            b.velocity = shootDir.multiplyScalar(currentWep.speed / 200);
             b.damage = currentWep.damage;
             scene.add(b); bullets.push(b);
         }
@@ -301,7 +295,6 @@
             requestAnimationFrame(animate);
             const now = performance.now();
 
-            // フェーズ切り替え
             if (score >= 1000 && phase === 1) {
                 phase = 2;
                 document.getElementById('msg').innerText = "PHASE 2: HEAVY ARMOR ENGAGED";
@@ -310,7 +303,6 @@
                 spawnVehicle('boat'); spawnVehicle('heli');
             }
 
-            // 反動とカメラ
             currentRecoilY *= (1 - currentWep.recoil.speed);
             currentRecoilX *= (1 - currentWep.recoil.speed);
             camera.quaternion.setFromEuler(new THREE.Euler(Math.max(-1.5, Math.min(1.5, lat + currentRecoilY)), lon + currentRecoilX, 0, 'YXZ'));
@@ -321,7 +313,6 @@
 
             if (isFiring) shoot();
 
-            // 移動
             if (moveTouchId !== null) {
                 const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
                 forward.y = 0; forward.normalize();
@@ -331,7 +322,6 @@
                 camera.position.addScaledVector(right, moveX * (isADS ? 0.08 : 0.15));
             }
 
-            // プレイヤーの弾
             for (let i = bullets.length - 1; i >= 0; i--) {
                 const b = bullets[i]; b.position.add(b.velocity);
                 bots.forEach(bot => {
@@ -341,41 +331,36 @@
                     }
                 });
                 vehicles.forEach((v, vIdx) => {
-                    if (b.position.distanceTo(v.position) < 4) {
+                    if (b.position.distanceTo(v.position) < 5) {
                         v.userData.hp -= b.damage; scene.remove(b); bullets.splice(i, 1);
                         if (v.userData.hp <= 0) { scene.remove(v); vehicles.splice(vIdx, 1); score += 1000; updateUI(); spawnVehicle(v.userData.type); }
                     }
                 });
-                if(b.position.length() > 300) { scene.remove(b); bullets.splice(i, 1); }
+                if(b.position.length() > 500) { scene.remove(b); bullets.splice(i, 1); }
             }
 
-            // 敵の攻撃ロジック
             vehicles.forEach(v => {
                 const dist = v.position.distanceTo(camera.position);
-                // 移動AI
                 if(v.userData.type === 'boat') { v.position.x += Math.sin(now * 0.001) * 0.2; v.position.z += v.userData.speed * 2; if(v.position.z > 50) v.position.z = -150; }
                 else { v.position.x = Math.cos(now * 0.0005) * 100; v.position.z = Math.sin(now * 0.0005) * 100 - 50; }
 
-                // 攻撃AI
-                if (now - v.userData.lastShoot > (v.userData.type === 'boat' ? 1000 : 3000) && dist < 150) {
+                if (now - v.userData.lastShoot > (v.userData.type === 'boat' ? 1000 : 3000) && dist < 200) {
                     v.userData.lastShoot = now;
-                    const eb = new THREE.Mesh(new THREE.SphereGeometry(v.userData.type === 'boat' ? 0.3 : 1, 8, 8), 
+                    const eb = new THREE.Mesh(new THREE.SphereGeometry(v.userData.type === 'boat' ? 0.4 : 1.2, 8, 8), 
                              new THREE.MeshBasicMaterial({ color: v.userData.type === 'boat' ? 0xff3300 : 0x00ffff }));
                     eb.position.copy(v.position);
                     const dir = new THREE.Vector3().subVectors(camera.position, v.position).normalize();
-                    eb.velocity = dir.multiplyScalar(v.userData.type === 'boat' ? 1.5 : 0.8);
+                    eb.velocity = dir.multiplyScalar(v.userData.type === 'boat' ? 1.8 : 1.0);
                     scene.add(eb); enemyBullets.push(eb);
                 }
             });
 
-            // 敵弾の衝突判定
             for (let i = enemyBullets.length - 1; i >= 0; i--) {
                 const eb = enemyBullets[i]; eb.position.add(eb.velocity);
-                if (eb.position.distanceTo(camera.position) < 2) { scene.remove(eb); enemyBullets.splice(i, 1); triggerDamage(); }
-                else if (eb.position.y < 0 || eb.position.length() > 500) { scene.remove(eb); enemyBullets.splice(i, 1); }
+                if (eb.position.distanceTo(camera.position) < 2.5) { scene.remove(eb); enemyBullets.splice(i, 1); triggerDamage(); }
+                else if (eb.position.y < -1 || eb.position.length() > 600) { scene.remove(eb); enemyBullets.splice(i, 1); }
             }
 
-            // 歩兵AI
             bots.forEach(bot => {
                 const dir = new THREE.Vector3().subVectors(camera.position, bot.position);
                 dir.y = 0; bot.position.add(dir.normalize().multiplyScalar(0.04));
